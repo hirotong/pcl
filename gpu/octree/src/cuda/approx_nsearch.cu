@@ -104,8 +104,7 @@ public:
 
     processNode(node_idx);
 
-    if (active)
-    {
+    if (active) {
       batch.output[query_index] = batch.indices[result_idx];
       batch.sqr_distance[query_index] = sqr_dist;
     }
@@ -143,8 +142,7 @@ private:
       const auto nearestPoint = NearestWarpKernel<KernelPolicy::CTA_SIZE>(
           beg, batch.points_step, end - beg, active_query);
 
-      if (active_lane == laneId)
-      {
+      if (active_lane == laneId) {
         result_idx = beg + nearestPoint.first;
         sqr_dist = nearestPoint.second;
       }

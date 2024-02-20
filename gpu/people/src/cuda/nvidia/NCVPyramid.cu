@@ -38,178 +38,242 @@
  * Ported to PCL by Koen Buys : Attention Work in progress!
  */
 
-
-#include <cuda_runtime.h>
-#include <stdio.h>
 #include "NCV.hpp"
 #include "NCVAlg.hpp"
-#include "NCVPyramid.hpp"
 #include "NCVPixelOperations.hpp"
-//#include "opencv2/gpu/device/common.hpp"
+#include "NCVPyramid.hpp"
+#include <cuda_runtime.h>
+#include <stdio.h>
+// #include "opencv2/gpu/device/common.hpp"
 
-template<typename T, Ncv32u CN> struct __average4_CN {static __host__ __device__ T _average4_CN(const T &p00, const T &p01, const T &p10, const T &p11);};
+template <typename T, Ncv32u CN>
+struct __average4_CN {
+  static __host__ __device__ T
+  _average4_CN(const T& p00, const T& p01, const T& p10, const T& p11);
+};
 
-template<typename T> struct __average4_CN<T, 1> {
-static __host__ __device__ T _average4_CN(const T &p00, const T &p01, const T &p10, const T &p11)
-{
+template <typename T>
+struct __average4_CN<T, 1> {
+  static __host__ __device__ T
+  _average4_CN(const T& p00, const T& p01, const T& p10, const T& p11)
+  {
     T out;
     out.x = ((Ncv32s)p00.x + p01.x + p10.x + p11.x + 2) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<float1, 1> {
-static __host__ __device__ float1 _average4_CN(const float1 &p00, const float1 &p01, const float1 &p10, const float1 &p11)
-{
+template <>
+struct __average4_CN<float1, 1> {
+  static __host__ __device__ float1
+  _average4_CN(const float1& p00,
+               const float1& p01,
+               const float1& p10,
+               const float1& p11)
+  {
     float1 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<double1, 1> {
-static __host__ __device__ double1 _average4_CN(const double1 &p00, const double1 &p01, const double1 &p10, const double1 &p11)
-{
+template <>
+struct __average4_CN<double1, 1> {
+  static __host__ __device__ double1
+  _average4_CN(const double1& p00,
+               const double1& p01,
+               const double1& p10,
+               const double1& p11)
+  {
     double1 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     return out;
-}};
+  }
+};
 
-template<typename T> struct __average4_CN<T, 3> {
-static __host__ __device__ T _average4_CN(const T &p00, const T &p01, const T &p10, const T &p11)
-{
+template <typename T>
+struct __average4_CN<T, 3> {
+  static __host__ __device__ T
+  _average4_CN(const T& p00, const T& p01, const T& p10, const T& p11)
+  {
     T out;
     out.x = ((Ncv32s)p00.x + p01.x + p10.x + p11.x + 2) / 4;
     out.y = ((Ncv32s)p00.y + p01.y + p10.y + p11.y + 2) / 4;
     out.z = ((Ncv32s)p00.z + p01.z + p10.z + p11.z + 2) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<float3, 3> {
-static __host__ __device__ float3 _average4_CN(const float3 &p00, const float3 &p01, const float3 &p10, const float3 &p11)
-{
+template <>
+struct __average4_CN<float3, 3> {
+  static __host__ __device__ float3
+  _average4_CN(const float3& p00,
+               const float3& p01,
+               const float3& p10,
+               const float3& p11)
+  {
     float3 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     out.y = (p00.y + p01.y + p10.y + p11.y) / 4;
     out.z = (p00.z + p01.z + p10.z + p11.z) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<double3, 3> {
-static __host__ __device__ double3 _average4_CN(const double3 &p00, const double3 &p01, const double3 &p10, const double3 &p11)
-{
+template <>
+struct __average4_CN<double3, 3> {
+  static __host__ __device__ double3
+  _average4_CN(const double3& p00,
+               const double3& p01,
+               const double3& p10,
+               const double3& p11)
+  {
     double3 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     out.y = (p00.y + p01.y + p10.y + p11.y) / 4;
     out.z = (p00.z + p01.z + p10.z + p11.z) / 4;
     return out;
-}};
+  }
+};
 
-template<typename T> struct __average4_CN<T, 4> {
-static __host__ __device__ T _average4_CN(const T &p00, const T &p01, const T &p10, const T &p11)
-{
+template <typename T>
+struct __average4_CN<T, 4> {
+  static __host__ __device__ T
+  _average4_CN(const T& p00, const T& p01, const T& p10, const T& p11)
+  {
     T out;
     out.x = ((Ncv32s)p00.x + p01.x + p10.x + p11.x + 2) / 4;
     out.y = ((Ncv32s)p00.y + p01.y + p10.y + p11.y + 2) / 4;
     out.z = ((Ncv32s)p00.z + p01.z + p10.z + p11.z + 2) / 4;
     out.w = ((Ncv32s)p00.w + p01.w + p10.w + p11.w + 2) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<float4, 4> {
-static __host__ __device__ float4 _average4_CN(const float4 &p00, const float4 &p01, const float4 &p10, const float4 &p11)
-{
+template <>
+struct __average4_CN<float4, 4> {
+  static __host__ __device__ float4
+  _average4_CN(const float4& p00,
+               const float4& p01,
+               const float4& p10,
+               const float4& p11)
+  {
     float4 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     out.y = (p00.y + p01.y + p10.y + p11.y) / 4;
     out.z = (p00.z + p01.z + p10.z + p11.z) / 4;
     out.w = (p00.w + p01.w + p10.w + p11.w) / 4;
     return out;
-}};
+  }
+};
 
-template<> struct __average4_CN<double4, 4> {
-static __host__ __device__ double4 _average4_CN(const double4 &p00, const double4 &p01, const double4 &p10, const double4 &p11)
-{
+template <>
+struct __average4_CN<double4, 4> {
+  static __host__ __device__ double4
+  _average4_CN(const double4& p00,
+               const double4& p01,
+               const double4& p10,
+               const double4& p11)
+  {
     double4 out;
     out.x = (p00.x + p01.x + p10.x + p11.x) / 4;
     out.y = (p00.y + p01.y + p10.y + p11.y) / 4;
     out.z = (p00.z + p01.z + p10.z + p11.z) / 4;
     out.w = (p00.w + p01.w + p10.w + p11.w) / 4;
     return out;
-}};
+  }
+};
 
-template<typename T> static __host__ __device__ T _average4(const T &p00, const T &p01, const T &p10, const T &p11)
+template <typename T>
+static __host__ __device__ T
+_average4(const T& p00, const T& p01, const T& p10, const T& p11)
 {
-    return __average4_CN<T, NC(T)>::_average4_CN(p00, p01, p10, p11);
+  return __average4_CN<T, NC(T)>::_average4_CN(p00, p01, p10, p11);
 }
 
-template<typename Tin, typename Tout, Ncv32u CN> struct __lerp_CN {static __host__ __device__ Tout _lerp_CN(const Tin &a, const Tin &b, Ncv32f d);};
+template <typename Tin, typename Tout, Ncv32u CN>
+struct __lerp_CN {
+  static __host__ __device__ Tout
+  _lerp_CN(const Tin& a, const Tin& b, Ncv32f d);
+};
 
-template<typename Tin, typename Tout> struct __lerp_CN<Tin, Tout, 1> {
-static __host__ __device__ Tout _lerp_CN(const Tin &a, const Tin &b, Ncv32f d)
-{
+template <typename Tin, typename Tout>
+struct __lerp_CN<Tin, Tout, 1> {
+  static __host__ __device__ Tout
+  _lerp_CN(const Tin& a, const Tin& b, Ncv32f d)
+  {
     using TB = typename TConvVec2Base<Tout>::TBase;
     return _pixMake(TB(b.x * d + a.x * (1 - d)));
-}};
+  }
+};
 
-template<typename Tin, typename Tout> struct __lerp_CN<Tin, Tout, 3> {
-static __host__ __device__ Tout _lerp_CN(const Tin &a, const Tin &b, Ncv32f d)
-{
+template <typename Tin, typename Tout>
+struct __lerp_CN<Tin, Tout, 3> {
+  static __host__ __device__ Tout
+  _lerp_CN(const Tin& a, const Tin& b, Ncv32f d)
+  {
     using TB = typename TConvVec2Base<Tout>::TBase;
     return _pixMake(TB(b.x * d + a.x * (1 - d)),
                     TB(b.y * d + a.y * (1 - d)),
                     TB(b.z * d + a.z * (1 - d)));
-}};
+  }
+};
 
-template<typename Tin, typename Tout> struct __lerp_CN<Tin, Tout, 4> {
-static __host__ __device__ Tout _lerp_CN(const Tin &a, const Tin &b, Ncv32f d)
-{
+template <typename Tin, typename Tout>
+struct __lerp_CN<Tin, Tout, 4> {
+  static __host__ __device__ Tout
+  _lerp_CN(const Tin& a, const Tin& b, Ncv32f d)
+  {
     using TB = typename TConvVec2Base<Tout>::TBase;
     return _pixMake(TB(b.x * d + a.x * (1 - d)),
                     TB(b.y * d + a.y * (1 - d)),
                     TB(b.z * d + a.z * (1 - d)),
                     TB(b.w * d + a.w * (1 - d)));
-}};
+  }
+};
 
-template<typename Tin, typename Tout> static __host__ __device__ Tout _lerp(const Tin &a, const Tin &b, Ncv32f d)
+template <typename Tin, typename Tout>
+static __host__ __device__ Tout
+_lerp(const Tin& a, const Tin& b, Ncv32f d)
 {
-    return __lerp_CN<Tin, Tout, NC(Tin)>::_lerp_CN(a, b, d);
+  return __lerp_CN<Tin, Tout, NC(Tin)>::_lerp_CN(a, b, d);
 }
 
-template<typename T>
-__global__ void kernelDownsampleX2(T *d_src,
-                                   Ncv32u srcPitch,
-                                   T *d_dst,
-                                   Ncv32u dstPitch,
-                                   NcvSize32u dstRoi)
+template <typename T>
+__global__ void
+kernelDownsampleX2(
+    T* d_src, Ncv32u srcPitch, T* d_dst, Ncv32u dstPitch, NcvSize32u dstRoi)
 {
-    Ncv32u i = blockIdx.y * blockDim.y + threadIdx.y;
-    Ncv32u j = blockIdx.x * blockDim.x + threadIdx.x;
+  Ncv32u i = blockIdx.y * blockDim.y + threadIdx.y;
+  Ncv32u j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < dstRoi.height && j < dstRoi.width)
-    {
-        T *d_src_line1 = (T *)((Ncv8u *)d_src + (2 * i + 0) * srcPitch);
-        T *d_src_line2 = (T *)((Ncv8u *)d_src + (2 * i + 1) * srcPitch);
-        T *d_dst_line = (T *)((Ncv8u *)d_dst + i * dstPitch);
+  if (i < dstRoi.height && j < dstRoi.width) {
+    T* d_src_line1 = (T*)((Ncv8u*)d_src + (2 * i + 0) * srcPitch);
+    T* d_src_line2 = (T*)((Ncv8u*)d_src + (2 * i + 1) * srcPitch);
+    T* d_dst_line = (T*)((Ncv8u*)d_dst + i * dstPitch);
 
-        T p00 = d_src_line1[2*j+0];
-        T p01 = d_src_line1[2*j+1];
-        T p10 = d_src_line2[2*j+0];
-        T p11 = d_src_line2[2*j+1];
+    T p00 = d_src_line1[2 * j + 0];
+    T p01 = d_src_line1[2 * j + 1];
+    T p10 = d_src_line2[2 * j + 0];
+    T p11 = d_src_line2[2 * j + 1];
 
-        d_dst_line[j] = _average4(p00, p01, p10, p11);
-    }
+    d_dst_line[j] = _average4(p00, p01, p10, p11);
+  }
 }
 
 /*
-namespace cv { namespace gpu { namespace device 
+namespace cv { namespace gpu { namespace device
 {
     namespace pyramid
     {
-        template <typename T> void kernelDownsampleX2_gpu(DevMem2Db src, DevMem2Db dst, cudaStream_t stream)
+        template <typename T> void kernelDownsampleX2_gpu(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream)
         {
             dim3 bDim(16, 8);
             dim3 gDim(divUp(src.cols, bDim.x), divUp(src.rows, bDim.y));
 
-            kernelDownsampleX2<<<gDim, bDim, 0, stream>>>((T*)src.data, src.step, (T*)dst.data, dst.step, NcvSize32u(dst.cols, dst.rows));
+            kernelDownsampleX2<<<gDim, bDim, 0, stream>>>((T*)src.data, src.step,
+(T*)dst.data, dst.step, NcvSize32u(dst.cols, dst.rows));
 
             cudaSafeCall( cudaGetLastError() );
 
@@ -217,73 +281,78 @@ namespace cv { namespace gpu { namespace device
                 cudaSafeCall( cudaDeviceSynchronize() );
         }
 
-        template void kernelDownsampleX2_gpu<uchar1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<uchar3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<uchar4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelDownsampleX2_gpu<uchar1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelDownsampleX2_gpu<uchar3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelDownsampleX2_gpu<uchar4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
 
-        template void kernelDownsampleX2_gpu<ushort1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<ushort3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<ushort4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelDownsampleX2_gpu<ushort1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelDownsampleX2_gpu<ushort3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelDownsampleX2_gpu<ushort4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
 
-        template void kernelDownsampleX2_gpu<float1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<float3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelDownsampleX2_gpu<float4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelDownsampleX2_gpu<float1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelDownsampleX2_gpu<float3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelDownsampleX2_gpu<float4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
     }
 }}} */
 
-template<typename T>
-__global__ void kernelInterpolateFrom1(T *d_srcTop,
-                                       Ncv32u srcTopPitch,
-                                       NcvSize32u szTopRoi,
-                                       T *d_dst,
-                                       Ncv32u dstPitch,
-                                       NcvSize32u dstRoi)
+template <typename T>
+__global__ void
+kernelInterpolateFrom1(T* d_srcTop,
+                       Ncv32u srcTopPitch,
+                       NcvSize32u szTopRoi,
+                       T* d_dst,
+                       Ncv32u dstPitch,
+                       NcvSize32u dstRoi)
 {
-    Ncv32u i = blockIdx.y * blockDim.y + threadIdx.y;
-    Ncv32u j = blockIdx.x * blockDim.x + threadIdx.x;
+  Ncv32u i = blockIdx.y * blockDim.y + threadIdx.y;
+  Ncv32u j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < dstRoi.height && j < dstRoi.width)
-    {
-        Ncv32f ptTopX = 1.0f * (szTopRoi.width - 1) * j / (dstRoi.width - 1);
-        Ncv32f ptTopY = 1.0f * (szTopRoi.height - 1) * i / (dstRoi.height - 1);
-        Ncv32u xl = (Ncv32u)ptTopX;
-        Ncv32u xh = xl+1;
-        Ncv32f dx = ptTopX - xl;
-        Ncv32u yl = (Ncv32u)ptTopY;
-        Ncv32u yh = yl+1;
-        Ncv32f dy = ptTopY - yl;
+  if (i < dstRoi.height && j < dstRoi.width) {
+    Ncv32f ptTopX = 1.0f * (szTopRoi.width - 1) * j / (dstRoi.width - 1);
+    Ncv32f ptTopY = 1.0f * (szTopRoi.height - 1) * i / (dstRoi.height - 1);
+    Ncv32u xl = (Ncv32u)ptTopX;
+    Ncv32u xh = xl + 1;
+    Ncv32f dx = ptTopX - xl;
+    Ncv32u yl = (Ncv32u)ptTopY;
+    Ncv32u yh = yl + 1;
+    Ncv32f dy = ptTopY - yl;
 
-        T *d_src_line1 = (T *)((Ncv8u *)d_srcTop + yl * srcTopPitch);
-        T *d_src_line2 = (T *)((Ncv8u *)d_srcTop + yh * srcTopPitch);
-        T *d_dst_line = (T *)((Ncv8u *)d_dst + i * dstPitch);
+    T* d_src_line1 = (T*)((Ncv8u*)d_srcTop + yl * srcTopPitch);
+    T* d_src_line2 = (T*)((Ncv8u*)d_srcTop + yh * srcTopPitch);
+    T* d_dst_line = (T*)((Ncv8u*)d_dst + i * dstPitch);
 
-        T p00, p01, p10, p11;
-        p00 = d_src_line1[xl];
-        p01 = xh < szTopRoi.width ? d_src_line1[xh] : p00;
-        p10 = yh < szTopRoi.height ? d_src_line2[xl] : p00;
-        p11 = (xh < szTopRoi.width && yh < szTopRoi.height) ? d_src_line2[xh] : p00;
-        using TVFlt = typename TConvBase2Vec<Ncv32f, NC(T)>::TVec;
-        TVFlt m_00_01 = _lerp<T, TVFlt>(p00, p01, dx);
-        TVFlt m_10_11 = _lerp<T, TVFlt>(p10, p11, dx);
-        TVFlt mixture = _lerp<TVFlt, TVFlt>(m_00_01, m_10_11, dy);
-        T outPix = _pixDemoteClampZ<TVFlt, T>(mixture);
+    T p00, p01, p10, p11;
+    p00 = d_src_line1[xl];
+    p01 = xh < szTopRoi.width ? d_src_line1[xh] : p00;
+    p10 = yh < szTopRoi.height ? d_src_line2[xl] : p00;
+    p11 = (xh < szTopRoi.width && yh < szTopRoi.height) ? d_src_line2[xh] : p00;
+    using TVFlt = typename TConvBase2Vec<Ncv32f, NC(T)>::TVec;
+    TVFlt m_00_01 = _lerp<T, TVFlt>(p00, p01, dx);
+    TVFlt m_10_11 = _lerp<T, TVFlt>(p10, p11, dx);
+    TVFlt mixture = _lerp<TVFlt, TVFlt>(m_00_01, m_10_11, dy);
+    T outPix = _pixDemoteClampZ<TVFlt, T>(mixture);
 
-        d_dst_line[j] = outPix;
-    }
+    d_dst_line[j] = outPix;
+  }
 }
 
 /*
-namespace cv { namespace gpu { namespace device 
+namespace cv { namespace gpu { namespace device
 {
     namespace pyramid
     {
-        template <typename T> void kernelInterpolateFrom1_gpu(DevMem2Db src, DevMem2Db dst, cudaStream_t stream)
+        template <typename T> void kernelInterpolateFrom1_gpu(DevMem2Db src, DevMem2Db
+dst, cudaStream_t stream)
         {
             dim3 bDim(16, 8);
             dim3 gDim(divUp(dst.cols, bDim.x), divUp(dst.rows, bDim.y));
 
-            kernelInterpolateFrom1<<<gDim, bDim, 0, stream>>>((T*) src.data, src.step, NcvSize32u(src.cols, src.rows), 
-                (T*) dst.data, dst.step, NcvSize32u(dst.cols, dst.rows));
+            kernelInterpolateFrom1<<<gDim, bDim, 0, stream>>>((T*) src.data, src.step,
+NcvSize32u(src.cols, src.rows), (T*) dst.data, dst.step, NcvSize32u(dst.cols,
+dst.rows));
 
             cudaSafeCall( cudaGetLastError() );
 
@@ -291,22 +360,24 @@ namespace cv { namespace gpu { namespace device
                 cudaSafeCall( cudaDeviceSynchronize() );
         }
 
-        template void kernelInterpolateFrom1_gpu<uchar1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<uchar3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<uchar4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelInterpolateFrom1_gpu<uchar1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelInterpolateFrom1_gpu<uchar3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelInterpolateFrom1_gpu<uchar4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
 
-        template void kernelInterpolateFrom1_gpu<ushort1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<ushort3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<ushort4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelInterpolateFrom1_gpu<ushort1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelInterpolateFrom1_gpu<ushort3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelInterpolateFrom1_gpu<ushort4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
 
-        template void kernelInterpolateFrom1_gpu<float1>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<float3>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
-        template void kernelInterpolateFrom1_gpu<float4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
+        template void kernelInterpolateFrom1_gpu<float1>(DevMem2Db src, DevMem2Db dst,
+cudaStream_t stream); template void kernelInterpolateFrom1_gpu<float3>(DevMem2Db src,
+DevMem2Db dst, cudaStream_t stream); template void
+kernelInterpolateFrom1_gpu<float4>(DevMem2Db src, DevMem2Db dst, cudaStream_t stream);
     }
 }}} */
 
-
-#if 0 //def _WIN32
+#if 0 // def _WIN32
 
 template<typename T>
 static T _interpLinear(const T &a, const T &b, Ncv32f d)

@@ -43,7 +43,7 @@
 #include <cstdio>
 
 #define HAVE_CUDA
-//#include <pcl_config.h>
+// #include <pcl_config.h>
 
 #if !defined(HAVE_CUDA)
 

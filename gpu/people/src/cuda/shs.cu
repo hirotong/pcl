@@ -41,8 +41,9 @@
 *
 */
 
-#include "internal.h"
 #include <pcl/gpu/utils/device/funcattrib.hpp>
+
+#include "internal.h"
 
 namespace pcl
 {
@@ -249,6 +250,5 @@ void optimized_shs5(const PointCloud<PointXYZRGB> &cloud, float tolerance, const
 }
 
 #endif
-
 
 #endif
