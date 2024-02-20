@@ -59,6 +59,13 @@
 #define KINFU_DEFAULT_DEPTH_FOCAL_X 585.f
 #define KINFU_DEFAULT_DEPTH_FOCAL_Y 585.f
 
+// zivid camera parameters, from Fahira's code
+#define KINFU_ZIVID_RGB_FOCAL_X 1779.87915039062
+#define KINFU_ZIVID_RGB_FOCAL_Y 1780.30529785156
+
+#define KINFU_ZIVID_DEPTH_FOCAL_X 1779.87915039062
+#define KINFU_ZIVID_DEPTH_FOCAL_Y 1779.87915039062
+
 namespace pcl {
 namespace gpu {
 /** \brief KinfuTracker class encapsulates implementation of Microsoft Kinect Fusion
@@ -79,7 +86,7 @@ public:
    * \param[in] rows height of depth image
    * \param[in] cols width of depth image
    */
-  KinfuTracker(int rows = 480, int cols = 640);
+  KinfuTracker(int rows = 480, int cols = 640, int noise_components = 0);
 
   /** \brief Sets Depth camera intrinsics
    * \param[in] fx focal length x
@@ -129,6 +136,13 @@ public:
   void
   setCameraMovementThreshold(float threshold = 0.001f);
 
+  /** \brief Performs initialization for number of noise components to be
+   * accounted for. \param[in] noise_components = 0 for no noise consideration, 1
+   * for axial noise consideration, 2 for axial and lateral noise consideration.
+   */
+  void
+  setNoiseComponents(int noise_components);
+
   /** \brief Performs initialization for color integration. Must be called before
    * calling color integration. \param[in] max_weight max weighe for color integration.
    * -1 means default weight.
@@ -149,8 +163,9 @@ public:
    * \param hint
    * \return true if can render 3D view.
    */
+  // FIXME: The hint may need to be removed.
   bool
-  operator()(const DepthMap& depth, Eigen::Affine3f* hint = nullptr);
+  operator()(const DepthMap& depth);
 
   /** \brief Processes next frame (both depth and color integration). Please call
    * initColorIntegration before invpoking this. \param[in] depth next depth frame with
@@ -228,6 +243,8 @@ private:
   int cols_;
   /** \brief Frame counter */
   int global_time_;
+  /** number of noise component to be considered for depth fusion. */
+  int noise_components_;
 
   /** \brief Truncation threshold for depth image for ICP step */
   float max_icp_distance_;

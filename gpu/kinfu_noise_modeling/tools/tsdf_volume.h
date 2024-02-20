@@ -73,7 +73,7 @@ public:
     , volume_element_size(sizeof(VoxelT))
     , weights_element_size(sizeof(WeightT)){};
 
-    Header(const Eigen::Vector3i& res, const Eigen::Vector3f& size)
+    Header(Eigen::Vector3i res, Eigen::Vector3f size)
     : resolution(res)
     , volume_size(size)
     , volume_element_size(sizeof(VoxelT))
@@ -93,8 +93,8 @@ public:
       return (os);
     }
 
-  public:
-    PCL_MAKE_ALIGNED_OPERATOR_NEW
+    // public:
+    //   PCL_MAKE_ALIGNED_OPERATOR_NEW
   };
 
 #define DEFAULT_TRANCATION_DISTANCE 30.0f
@@ -142,7 +142,7 @@ public:
   /** \brief Set the header directly. Useful if directly writing into volume and weights
    */
   inline void
-  setHeader(const Eigen::Vector3i& resolution, const Eigen::Vector3f& volume_size)
+  setHeader(Eigen::Vector3i resolution, Eigen::Vector3f volume_size)
   {
     header_ = Header(resolution, volume_size);
     if (volume_->size() != this->size())
@@ -154,10 +154,10 @@ public:
 
   /** \brief Resizes the internal storage and updates the header accordingly */
   inline void
-  resize(Eigen::Vector3i& grid_resolution,
-         const Eigen::Vector3f& volume_size = Eigen::Vector3f(DEFAULT_VOLUME_SIZE_X,
-                                                              DEFAULT_VOLUME_SIZE_Y,
-                                                              DEFAULT_VOLUME_SIZE_Z))
+  resize(Eigen::Vector3i grid_resolution,
+         Eigen::Vector3f volume_size = Eigen::Vector3f(DEFAULT_VOLUME_SIZE_X,
+                                                       DEFAULT_VOLUME_SIZE_Y,
+                                                       DEFAULT_VOLUME_SIZE_Z))
   {
     int lin_size = grid_resolution[0] * grid_resolution[1] * grid_resolution[2];
     volume_->resize(lin_size);
@@ -339,9 +339,8 @@ private:
   Header header_;
   VolumePtr volume_;
   WeightsPtr weights_;
-
-public:
-  PCL_MAKE_ALIGNED_OPERATOR_NEW
+  // public:
+  //   PCL_MAKE_ALIGNED_OPERATOR_NEW
 };
 
 } // namespace pcl

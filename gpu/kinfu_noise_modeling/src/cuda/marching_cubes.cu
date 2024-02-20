@@ -85,7 +85,7 @@ struct CubeIndexEstimator {
   }
 
   __device__ __forceinline__ void
-  readTsdf(int x, int y, int z, float& tsdf, int& weight) const
+  readTsdf(int x, int y, int z, float& tsdf, float& weight) const
   {
     unpack_tsdf(volume.ptr(VOLUME_Y * z + y)[x], tsdf, weight);
   }
@@ -93,7 +93,7 @@ struct CubeIndexEstimator {
   __device__ __forceinline__ int
   computeCubeIndex(int x, int y, int z, float f[8]) const
   {
-    int weight;
+    float weight;
     readTsdf(x, y, z, f[0], weight);
     if (weight == 0)
       return 0;

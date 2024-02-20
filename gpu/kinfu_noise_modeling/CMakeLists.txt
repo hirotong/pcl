@@ -1,6 +1,6 @@
-set(SUBSYS_NAME gpu_kinfu)
-set(SUBSYS_PATH gpu/kinfu)
-set(SUBSYS_DESC "Kinect Fusion implementation")
+set(SUBSYS_NAME gpu_kinfu_noise_modeling)
+set(SUBSYS_PATH gpu/kinfu_noise_modeling)
+set(SUBSYS_DESC "Kinect Fusion implementation noise modeling")
 set(SUBSYS_DEPS common io gpu_containers geometry search)
 if(${CUDA_VERSION_STRING} VERSION_GREATER_EQUAL "12.0")
   set(DEFAULT FALSE)
@@ -18,7 +18,7 @@ if(NOT build)
   return()
 endif()
 
-file(GLOB incs include/pcl/gpu/kinfu/*.h*)
+file(GLOB incs include/pcl/gpu/kinfu_noise_modeling/*.h*)
 file(GLOB srcs src/*.cpp src/*.h*)
 file(GLOB cuda src/cuda/*.cu src/cuda/*.h*)
 

@@ -96,6 +96,14 @@ reduce(volatile T* buffer)
 struct Combined {
   enum { CTA_SIZE_X = 32, CTA_SIZE_Y = 8, CTA_SIZE = CTA_SIZE_X * CTA_SIZE_Y };
 
+  struct plus {
+    __device__ __forceinline__ float
+    operator()(const float_type& lhs, const volatile float_type& rhs) const
+    {
+      return lhs + rhs;
+    }
+  };
+
   Mat33 Rcurr;
   float3 tcurr;
 
@@ -160,6 +168,10 @@ struct Combined {
 
     ncurr.y = nmap_curr.ptr(y + rows)[x];
     ncurr.z = nmap_curr.ptr(y + 2 * rows)[x];
+    // ignore points with normal vector pointing more than 60 degrees from z-axis
+    const float theta = acosf(fabsf(ncurr.z));
+    if (theta > PI / 2.5f) // skip normal angle larger than 72 degrees
+      return (false);
 
     float3 ncurr_g = Rcurr * ncurr;
 
@@ -170,7 +182,12 @@ struct Combined {
 
     if (sine >= angleThres)
       return (false);
-    n = nprev_g;
+    // weighting factor from current depth distance and normal angle
+    const float sigmaz = 0.0012f + 0.0019f * (vcurr.z - 0.4f) * (vcurr.z - 0.4f) +
+                         0.0001f / sqrtf(vcurr.z) * theta * theta /
+                             (PI / 2.0f - theta) / (PI / 2.0f - theta);
+    const float w = 0.0012f / sigmaz;
+    n = nprev_g * w;
     d = vprev_g;
     s = vcurr_g;
     return (true);
@@ -211,7 +228,7 @@ struct Combined {
         smem[tid] = row[i] * row[j];
         __syncthreads();
 
-        reduce<CTA_SIZE>(smem);
+        Block::reduce<CTA_SIZE>(smem, plus());
 
         if (tid == 0)
           gbuf.ptr(shift++)[blockIdx.x + gridDim.x * blockIdx.y] = smem[0];
@@ -262,7 +279,7 @@ struct TranformReduction {
     smem[tid] = sum;
     __syncthreads();
 
-    reduce<CTA_SIZE>(smem);
+    Block::reduce<CTA_SIZE>(smem, Combined::plus());
 
     if (tid == 0)
       output[blockIdx.x] = smem[0];

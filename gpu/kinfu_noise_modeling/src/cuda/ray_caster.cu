@@ -297,7 +297,7 @@ pcl::device::raycast(const Intr& intr,
   rc.Rcurr = Rcurr;
   rc.tcurr = tcurr;
 
-  rc.time_step = tranc_dist * 0.8f;
+  rc.time_step = 0.0005; // marching for every 0.5 mm //tranc_dist * 0.8f;
 
   rc.volume_size = volume_size;
 

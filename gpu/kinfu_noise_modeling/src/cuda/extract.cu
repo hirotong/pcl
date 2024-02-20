@@ -69,7 +69,7 @@ struct FullScan6 {
   mutable PtrSz<PointType> output;
 
   __device__ __forceinline__ float
-  fetch(int x, int y, int z, int& weight) const
+  fetch(int x, int y, int z, float& weight) const
   {
     float tsdf;
     unpack_tsdf(volume.ptr(VOLUME_Y * z + y)[x], tsdf, weight);
@@ -97,7 +97,7 @@ struct FullScan6 {
       int local_count = 0;
 
       if (x < VOLUME_X && y < VOLUME_Y) {
-        int W;
+        float W;
         float F = fetch(x, y, z, W);
 
         if (W != 0 && F != 1.f) {
@@ -105,7 +105,7 @@ struct FullScan6 {
 
           // process dx
           if (x + 1 < VOLUME_X) {
-            int Wn;
+            float Wn;
             float Fn = fetch(x + 1, y, z, Wn);
 
             if (Wn != 0 && Fn != 1.f)
@@ -125,7 +125,7 @@ struct FullScan6 {
 
           // process dy
           if (y + 1 < VOLUME_Y) {
-            int Wn;
+            float Wn;
             float Fn = fetch(x, y + 1, z, Wn);
 
             if (Wn != 0 && Fn != 1.f)
@@ -146,7 +146,7 @@ struct FullScan6 {
           // process dz
           // if (z + 1 < VOLUME_Z) // guaranteed by loop
           {
-            int Wn;
+            float Wn;
             float Fn = fetch(x, y, z + 1, Wn);
 
             if (Wn != 0 && Fn != 1.f)

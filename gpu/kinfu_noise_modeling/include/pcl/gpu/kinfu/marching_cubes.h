@@ -69,11 +69,11 @@ public:
   MarchingCubes();
 
   /** \brief Runs marching cubes triangulation.
-   * \param[in] tsdf
-   * \param[in] triangles_buffer Buffer for triangles. Its size determines max extracted
-   * triangles. If empty, it will be allocated with default size to be used. \return
-   * Array with triangles. Each 3 consequent points belong to a single triangle. The
-   * returned array points to 'triangles_buffer' data.
+   * \param[in] tsdf kinfu KinFu tracker class to take tsdf volume from
+   * \param[in] triangles_buffer Buffer for triangles. Its size determines max
+   * extracted triangles. If empty, it will be allocated with default size to be
+   * used. \return Array with triangles. Each 3 consequent points belong to a single
+   * triangle. The returned array points to 'triangles_buffer' data.
    */
   DeviceArray<PointType>
   run(const TsdfVolume& tsdf, DeviceArray<PointType>& triangles_buffer);

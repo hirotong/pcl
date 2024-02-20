@@ -50,6 +50,8 @@
 #include <iostream>
 
 #ifdef HAVE_OPENCV
+#include <pcl/gpu/utils/timers_opencv.hpp>
+
 #include <opencv2/gpu/gpu.hpp>
 #include <opencv2/opencv.hpp>
 #endif
@@ -70,10 +72,11 @@ rodrigues2(const Eigen::Matrix3f& matrix);
 } // namespace pcl
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-pcl::gpu::KinfuTracker::KinfuTracker(int rows, int cols)
+pcl::gpu::KinfuTracker::KinfuTracker(int rows, int cols, int noise_components)
 : rows_(rows)
 , cols_(cols)
 , global_time_(0)
+, noise_components_(noise_components)
 , max_icp_distance_(0)
 , integration_metric_threshold_(0.f)
 , disable_icp_(false)
@@ -84,8 +87,9 @@ pcl::gpu::KinfuTracker::KinfuTracker(int rows, int cols)
   tsdf_volume_ = TsdfVolume::Ptr(new TsdfVolume(volume_resolution));
   tsdf_volume_->setSize(volume_size);
 
-  setDepthIntrinsics(KINFU_DEFAULT_DEPTH_FOCAL_X,
-                     KINFU_DEFAULT_DEPTH_FOCAL_Y); // default values, can be overwritten
+  // TODO: change this with zivid camera parameters
+  setDepthIntrinsics(KINFU_ZIVID_DEPTH_FOCAL_X,
+                     KINFU_ZIVID_DEPTH_FOCAL_Y); // default values, can be overwritten
 
   init_Rcam_ = Eigen::Matrix3f::Identity(); // * AngleAxisf(-30.f/180*3.1415926,
                                             // Vector3f::UnitX());
@@ -164,6 +168,12 @@ pcl::gpu::KinfuTracker::setIcpCorespFilteringParams(float distThreshold,
   angleThres_ = sineOfAngle;
 }
 
+void
+pcl::gpu::KinfuTracker::setNoiseComponents(int noise_components)
+{
+  noise_components_ = noise_components;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int
 pcl::gpu::KinfuTracker::cols()
@@ -239,7 +249,7 @@ pcl::gpu::KinfuTracker::allocateBufffers(int rows, int cols)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool
-pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, Eigen::Affine3f* hint)
+pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw)
 {
   device::Intr intr(fx_, fy_, cx_, cy_);
 
@@ -278,14 +288,24 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, Eigen::Affine3f* h
 
       // integrateTsdfVolume(depth_raw, intr, device_volume_size, device_Rcam_inv,
       // device_tcam, tranc_dist, volume_);
-      device::integrateTsdfVolume(depth_raw,
-                                  intr,
-                                  device_volume_size,
-                                  device_Rcam_inv,
-                                  device_tcam,
-                                  tsdf_volume_->getTsdfTruncDist(),
-                                  tsdf_volume_->data(),
-                                  depthRawScaled_);
+      // device::integrateTsdfVolume(depth_raw,
+      //                             intr,
+      //                             device_volume_size,
+      //                             device_Rcam_inv,
+      //                             device_tcam,
+      //                             tsdf_volume_->getTsdfTruncDist(),
+      //                             tsdf_volume_->data(),
+      //                             depthRawScaled_);
+      device::integrateWeightedTsdfVolume(depth_raw,
+                                          nmaps_curr_[0],
+                                          intr,
+                                          device_volume_size,
+                                          device_Rcam_inv,
+                                          device_tcam,
+                                          tsdf_volume_->getTsdfTruncDist(),
+                                          tsdf_volume_->data(),
+                                          depthRawScaled_,
+                                          noise_components_);
 
       for (int i = 0; i < LEVELS; ++i)
         device::tranformMaps(vmaps_curr_[i],
@@ -310,16 +330,9 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, Eigen::Affine3f* h
     // Mat33&  device_Rprev     = device_cast<Mat33> (Rprev);
     Mat33& device_Rprev_inv = device_cast<Mat33>(Rprev_inv);
     float3& device_tprev = device_cast<float3>(tprev);
-    Matrix3frm Rcurr;
-    Vector3f tcurr;
-    if (hint) {
-      Rcurr = hint->rotation().matrix();
-      tcurr = hint->translation().matrix();
-    }
-    else {
-      Rcurr = Rprev; // transform to global coo for ith camera pose
-      tcurr = tprev;
-    }
+    Matrix3frm Rcurr =
+        Rprev; // tranfrom from camera to global coo space for ith camera pose
+    Vector3f tcurr = tprev;
     {
       // ScopeTime time("icp-all");
       for (int level_index = LEVELS - 1; level_index >= 0; --level_index) {
@@ -442,14 +455,26 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, Eigen::Affine3f* h
     // ScopeTime time("tsdf");
     // integrateTsdfVolume(depth_raw, intr, device_volume_size, device_Rcurr_inv,
     // device_tcurr, tranc_dist, volume_);
-    integrateTsdfVolume(depth_raw,
-                        intr,
-                        device_volume_size,
-                        device_Rcurr_inv,
-                        device_tcurr,
-                        tsdf_volume_->getTsdfTruncDist(),
-                        tsdf_volume_->data(),
-                        depthRawScaled_);
+    // integrateTsdfVolume(depth_raw,
+    //                     intr,
+    //                     device_volume_size,
+    //                     device_Rcurr_inv,
+    //                     device_tcurr,
+    //                     tsdf_volume_->getTsdfTruncDist(),
+    //                     tsdf_volume_->data(),
+    //                     depthRawScaled_);
+    integrateWeightedTsdfVolume(depth_raw,
+                                nmaps_curr_[0],
+                                intr,
+                                device_volume_size,
+                                device_Rcurr_inv,
+                                device_tcurr,
+                                tsdf_volume_->getTsdfTruncDist(),
+                                tsdf_volume_->data(),
+                                depthRawScaled_,
+                                noise_components_);
+
+    // TODO: integrateWeightedTSDFVolume();
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////////

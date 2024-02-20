@@ -54,7 +54,7 @@ initializeVolume(PtrStep<T> volume)
 
 #pragma unroll
     for (int z = 0; z < VOLUME_Z; ++z, pos += z_step)
-      pack_tsdf(0.f, 0, *pos);
+      pack_tsdf(0.f, 0.f, *pos);
   }
 }
 } // namespace device
@@ -63,7 +63,7 @@ initializeVolume(PtrStep<T> volume)
 void
 pcl::device::initVolume(PtrStep<short2> volume)
 {
-  dim3 block(16, 16);
+  dim3 block(32, 16);
   dim3 grid(1, 1, 1);
   grid.x = divUp(VOLUME_X, block.x);
   grid.y = divUp(VOLUME_Y, block.y);
@@ -144,7 +144,7 @@ struct Tsdf {
           if (sdf >= -tranc_dist_mm) {
             float tsdf = fmin(1.f, sdf / tranc_dist_mm);
 
-            int weight_prev;
+            float weight_prev;
             float tsdf_prev;
 
             // read and unpack
@@ -154,7 +154,7 @@ struct Tsdf {
 
             float tsdf_new =
                 (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
-            int weight_new = min(weight_prev + Wrk, MAX_WEIGHT);
+            float weight_new = min(weight_prev + Wrk, float(Tsdf::MAX_WEIGHT));
 
             pack_tsdf(tsdf_new, weight_new, *pos);
           }
@@ -230,7 +230,7 @@ tsdf2(PtrStep<short2> volume,
         if (sdf >= -tranc_dist_mm) {
           float tsdf = fmin(1.f, sdf / tranc_dist_mm);
 
-          int weight_prev;
+          float weight_prev;
           float tsdf_prev;
 
           // read and unpack
@@ -239,7 +239,7 @@ tsdf2(PtrStep<short2> volume,
           const int Wrk = 1;
 
           float tsdf_new = (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
-          int weight_new = min(weight_prev + Wrk, Tsdf::MAX_WEIGHT);
+          float weight_new = min(weight_prev + Wrk, float(Tsdf::MAX_WEIGHT));
 
           pack_tsdf(tsdf_new, weight_new, *pos);
         }
@@ -375,19 +375,234 @@ tsdf23(const PtrStepSz<float> depthScaled,
 
         // read and unpack
         float tsdf_prev;
-        int weight_prev;
+        float weight_prev;
         unpack_tsdf(*pos, tsdf_prev, weight_prev);
 
         const int Wrk = 1;
 
         float tsdf_new = (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
-        int weight_new = min(weight_prev + Wrk, Tsdf::MAX_WEIGHT);
+        float weight_new = min(weight_prev + Wrk, float(Tsdf::MAX_WEIGHT));
 
         pack_tsdf(tsdf_new, weight_new, *pos);
       }
     }
   } // for(int z = 0; z < VOLUME_Z; ++z)
 } // __global__
+
+__global__ void
+tsdf23_axial_noise(const PtrStepSz<float> depthScaled,
+                   const PtrStep<float> nmap,
+                   int rows,
+                   int cols,
+                   PtrStep<short2> volume,
+                   const Mat33 Rcurr_inv,
+                   const float3 tcurr,
+                   const Intr intr,
+                   const float3 cell_size)
+{
+  int x = threadIdx.x + blockIdx.x * blockDim.x;
+  int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+  if (x >= VOLUME_X || y >= VOLUME_Y)
+    return;
+
+  float v_g_x = (x + 0.5f) * cell_size.x - tcurr.x;
+  float v_g_y = (y + 0.5f) * cell_size.y - tcurr.y;
+  float v_g_z = (0 + 0.5f) * cell_size.z - tcurr.z;
+
+  float v_g_part_norm = v_g_x * v_g_x + v_g_y * v_g_y;
+
+  float v_x = (Rcurr_inv.data[0].x * v_g_x + Rcurr_inv.data[0].y * v_g_y +
+               Rcurr_inv.data[0].z * v_g_z) *
+              intr.fx;
+  float v_y = (Rcurr_inv.data[1].x * v_g_x + Rcurr_inv.data[1].y * v_g_y +
+               Rcurr_inv.data[1].z * v_g_z) *
+              intr.fy;
+  float v_z = (Rcurr_inv.data[2].x * v_g_x + Rcurr_inv.data[2].y * v_g_y +
+               Rcurr_inv.data[2].z * v_g_z);
+
+  float z_scaled = 0;
+
+  float Rcurr_inv_0_z_scaled = Rcurr_inv.data[0].z * cell_size.z * intr.fx;
+  float Rcurr_inv_1_z_scaled = Rcurr_inv.data[1].z * cell_size.z * intr.fy;
+
+  short2* pos = volume.ptr(y) + x;
+  int elem_step = volume.step * VOLUME_Y / sizeof(short2);
+
+  // #pragma unroll
+  for (int z = 0; z < VOLUME_Z; ++z,
+           v_g_z += cell_size.z,
+           z_scaled += cell_size.z,
+           v_x += Rcurr_inv_0_z_scaled,
+           v_y += Rcurr_inv_1_z_scaled,
+           pos += elem_step) {
+    float inv_z = 1.0f / (v_z + Rcurr_inv.data[2].z * z_scaled);
+    if (inv_z < 0)
+      continue;
+
+    // project to current cam
+    int2 coo = {__float2int_rn(v_x * inv_z + intr.cx),
+                __float2int_rn(v_y * inv_z + intr.cy)};
+
+    if (coo.x >= 0 && coo.y >= 0 && coo.x < depthScaled.cols &&
+        coo.y < depthScaled.rows) {
+      float Dp_scaled = depthScaled.ptr(coo.y)[coo.x]; // meters
+
+      // calculate sigma_l and sigma_z
+      float3 nvect;
+      nvect.x = nmap.ptr(coo.y)[coo.x];
+      nvect.y = nmap.ptr(coo.y + rows)[coo.x];
+      nvect.z = nmap.ptr(coo.y + 2 * rows)[coo.x];
+      const float theta = acosf(fabsf(nvect.z));
+      if (theta > PI / 2.5f) // ignore normal angle larger than 72 degrees
+        continue;
+      // const float sigmaL = 0.8f + 0.035f * theta / (PI / 2.0f - theta);
+      const float sigmaz = 0.0012f + 0.0019f * (Dp_scaled - 0.4f) * (Dp_scaled - 0.4f) +
+                           0.0001f / sqrtf(Dp_scaled) * theta * theta /
+                               (PI / 2.f - theta) / (PI / 2.f - theta);
+
+      float sdf = Dp_scaled - sqrtf(v_g_z * v_g_z + v_g_part_norm);
+
+      if (Dp_scaled != 0 && sdf > -6.f * sigmaz) // meters
+      {
+        float tsdf = sqrtf(1.0f - __expf(-2.f / PI * sdf * sdf / (sigmaz * sigmaz)));
+        if (sdf < 0)
+          tsdf = -tsdf;
+
+        // read and uppack
+        float tsdf_prev, weight_prev;
+        unpack_tsdf(*pos, tsdf_prev, weight_prev);
+
+        // assume z_min = 0.4
+        const float Wrk = 0.0012f / sigmaz * (0.4f / Dp_scaled) *
+                          (0.4f / Dp_scaled); // range from ~0 to 1.0
+
+        float tsdf_new = (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
+        float weight_new = min(weight_prev + Wrk, float(2 * Tsdf::MAX_WEIGHT));
+
+        pack_tsdf(tsdf_new, weight_new, *pos);
+      }
+    }
+  }
+}
+
+__global__ void
+tsdf23_all_noise(const PtrStepSz<float> depthScaled,
+                 const PtrStep<float> nmap,
+                 int rows,
+                 int cols,
+                 PtrStep<short2> volume,
+                 const Mat33 Rcurr_inv,
+                 const float3 tcurr,
+                 const Intr intr,
+                 const float3 cell_size)
+{
+  int x = threadIdx.x + blockIdx.x * blockDim.x;
+  int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+  if (x >= VOLUME_X || y >= VOLUME_Y)
+    return;
+
+  float v_g_x = (x + 0.5f) * cell_size.x - tcurr.x;
+  float v_g_y = (y + 0.5f) * cell_size.y - tcurr.y;
+  float v_g_z = (0 + 0.5f) * cell_size.z - tcurr.z;
+
+  float v_g_part_norm = v_g_x * v_g_x + v_g_y * v_g_y;
+
+  float v_x = (Rcurr_inv.data[0].x * v_g_x + Rcurr_inv.data[0].y * v_g_y +
+               Rcurr_inv.data[0].z * v_g_z) *
+              intr.fx;
+  float v_y = (Rcurr_inv.data[1].x * v_g_x + Rcurr_inv.data[1].y * v_g_y +
+               Rcurr_inv.data[1].z * v_g_z) *
+              intr.fy;
+  float v_z = (Rcurr_inv.data[2].x * v_g_x + Rcurr_inv.data[2].y * v_g_y +
+               Rcurr_inv.data[2].z * v_g_z);
+
+  float z_scaled = 0;
+
+  float Rcurr_inv_0_z_scaled = Rcurr_inv.data[0].z * cell_size.z * intr.fx;
+  float Rcurr_inv_1_z_scaled = Rcurr_inv.data[1].z * cell_size.z * intr.fy;
+
+  short2* pos = volume.ptr(y) + x;
+  int elem_step = volume.step * VOLUME_Y / sizeof(short2);
+
+  // #pragma unroll
+  for (int z = 0; z < VOLUME_Z; ++z,
+           v_g_z += cell_size.z,
+           z_scaled += cell_size.z,
+           v_x += Rcurr_inv_0_z_scaled,
+           v_y += Rcurr_inv_1_z_scaled,
+           pos += elem_step) {
+    float inv_z = 1.0f / (v_z + Rcurr_inv.data[2].z * z_scaled);
+    if (inv_z < 0)
+      continue;
+
+    // project to current cam
+    int2 coo = {__float2int_rn(v_x * inv_z + intr.cx),
+                __float2int_rn(v_y * inv_z + intr.cy)};
+    // and subpixel
+    float2 dcoo = {(coo.x - (v_x * inv_z + intr.cx)),
+                   (coo.y - (v_y * inv_z + intr.cy))};
+
+    if (coo.x >= 1 && coo.y >= 1 && coo.x < depthScaled.cols - 1 &&
+        coo.y < depthScaled.rows - 1) {
+      float Dp_scaled_mid = depthScaled.ptr(coo.y)[coo.x]; // meters
+      if (Dp_scaled_mid == 0)
+        continue;
+
+      // read and unpack
+      float tsdf_prev, weight_prev;
+      unpack_tsdf(*pos, tsdf_prev, weight_prev);
+      // loop within 3x3 pixel area around the current position
+#pragma unroll
+      for (int i = -1; i < 2; i++) {
+        for (int j = -1; j < 2; j++) {
+          const int ii = coo.x + i;
+          const int jj = coo.y + j;
+          const float Dp_scaled = depthScaled.ptr(jj)[ii]; // meters
+          const float dz = fabs(Dp_scaled - Dp_scaled_mid);
+          const float du =
+              sqrtf((i + dcoo.x) * (i + dcoo.x) + (j + dcoo.y) * (j + dcoo.y));
+
+          // calculate sigma_L and sigma_z
+          float3 nvect;
+          nvect.x = nmap.ptr(jj)[ii];
+          nvect.y = nmap.ptr(jj + rows)[ii];
+          nvect.z = nmap.ptr(jj + 2 * rows)[ii];
+          const float theta = acosf(fabsf(nvect.z));
+          if (theta > PI / 2.5f) // ignore normal angle larger than 72 degrees
+            continue;
+          const float sigmaL = 0.8f + 0.035f * theta / (PI / 2.0f - theta);
+          const float sigmaz = 0.0012f +
+                               0.0019f * (Dp_scaled - 0.4f) * (Dp_scaled - 0.4f) +
+                               0.0001f / sqrtf(Dp_scaled) * theta * theta /
+                                   (PI / 2.f - theta) / (PI / 2.f - theta);
+
+          // signed distance function
+          const float sdf = Dp_scaled - sqrtf(v_g_z * v_g_z + v_g_part_norm);
+
+          if ((Dp_scaled != 0) && (dz < 3.f * sigmaz) &&
+              (sdf > -6.f * sigmaz)) // meters
+          {
+            // new form of truncated signed distance function
+            float tsdf = sqrtf(1.f - __expf(-2.f / PI * sdf * sdf / (sigmaz * sigmaz)));
+            if (sdf < 0)
+              tsdf = -tsdf;
+
+            const float Wrk =
+                0.0012f / sigmaz * (0.4f / Dp_scaled) * (0.4f / Dp_scaled) *
+                __expf(-du * du / (2.f * sigmaL * sigmaL) -
+                       dz * dz / (2.f * sigmaz * sigmaz)); // range from ~0 to 1.0
+
+            tsdf_prev = (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
+            weight_prev = min(weight_prev + Wrk, float(2 * Tsdf::MAX_WEIGHT));
+          }
+        }
+      }
+      pack_tsdf(tsdf_prev, weight_prev, *pos);
+    }
+  } // for(int z = 0; z < VOLUME_Z; ++z)
+}
 
 __global__ void
 tsdf23normal_hack(const PtrStepSz<float> depthScaled,
@@ -462,7 +677,7 @@ tsdf23normal_hack(const PtrStepSz<float> depthScaled,
           float3 normal = make_float3(qnan, qnan, qnan);
 
           float Fn, Fp;
-          int Wn = 0, Wp = 0;
+          float Wn = 0.f, Wp = 0.f;
           unpack_tsdf(*(pos + elem_step), Fn, Wn);
           unpack_tsdf(*(pos - elem_step), Fp, Wp);
 
@@ -498,13 +713,13 @@ tsdf23normal_hack(const PtrStepSz<float> depthScaled,
         if (integrate) {
           // read and unpack
           float tsdf_prev;
-          int weight_prev;
+          float weight_prev;
           unpack_tsdf(*pos, tsdf_prev, weight_prev);
 
           const int Wrk = 1;
 
           float tsdf_new = (tsdf_prev * weight_prev + Wrk * tsdf) / (weight_prev + Wrk);
-          int weight_new = min(weight_prev + Wrk, Tsdf::MAX_WEIGHT);
+          float weight_new = min(weight_prev + Wrk, float(Tsdf::MAX_WEIGHT));
 
           pack_tsdf(tsdf_new, weight_new, *pos);
         }
@@ -548,6 +763,53 @@ pcl::device::integrateTsdfVolume(const PtrStepSz<ushort>& depth,
       depthScaled, volume, tranc_dist, Rcurr_inv, tcurr, intr, cell_size);
   // tsdf23normal_hack<<<grid, block>>>(depthScaled, volume, tranc_dist, Rcurr_inv,
   // tcurr, intr, cell_size);
+
+  cudaSafeCall(cudaGetLastError());
+  cudaSafeCall(cudaDeviceSynchronize());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void
+pcl::device::integrateWeightedTsdfVolume(const PtrStepSz<ushort>& depth,
+                                         const MapArr& nmap,
+                                         const Intr& intr,
+                                         const float3& volume_size,
+                                         const Mat33& Rcurr_inv,
+                                         const float3& tcurr,
+                                         float tranc_dist,
+                                         PtrStep<short2> volume,
+                                         DeviceArray2D<float>& depthScaled,
+                                         int noise_components)
+{
+  depthScaled.create(depth.rows, depth.cols);
+
+  dim3 block_scale(32, 8);
+  dim3 grid_scale(divUp(depth.cols, block_scale.x), divUp(depth.rows, block_scale.y));
+
+  // scales depth along ray and converts mm -> meters.
+  scaleDepth<<<grid_scale, block_scale>>>(depth, depthScaled, intr);
+  cudaSafeCall(cudaGetLastError());
+
+  float3 cell_size;
+  cell_size.x = volume_size.x / VOLUME_X;
+  cell_size.y = volume_size.y / VOLUME_Y;
+  cell_size.z = volume_size.z / VOLUME_Z;
+
+  // dim3 block(Tsdf::CTA_SIZE_X, Tsdf::CTA_SIZE_Y);
+  dim3 block(16, 16);
+  dim3 grid(divUp(VOLUME_X, block.x), divUp(VOLUME_Y, block.y));
+
+  int cols = nmap.cols();
+  int rows = nmap.rows() / 3;
+  if (noise_components == 0)
+    tsdf23<<<grid, block>>>(
+        depthScaled, volume, tranc_dist, Rcurr_inv, tcurr, intr, cell_size);
+  else if (noise_components == 1)
+    tsdf23_axial_noise<<<grid, block>>>(
+        depthScaled, nmap, rows, cols, volume, Rcurr_inv, tcurr, intr, cell_size);
+  else // (noise_components = 2)
+    tsdf23_all_noise<<<grid, block>>>(
+        depthScaled, nmap, rows, cols, volume, Rcurr_inv, tcurr, intr, cell_size);
 
   cudaSafeCall(cudaGetLastError());
   cudaSafeCall(cudaDeviceSynchronize());

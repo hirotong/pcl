@@ -428,7 +428,7 @@ main(int argc, char* argv[])
   visualizer.addPointCloud<PointT>(cloud); //, color_handler, "cloud");
   visualizer.setPointCloudRenderingProperties(
       pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1);
-  visualizer.addCoordinateSystem(1, "global");
+  visualizer.addCoordinateSystem(1);
   visualizer.initCameraParameters();
   visualizer.registerKeyboardCallback(keyboard_callback);
   visualizer.spinOnce();

@@ -39,15 +39,18 @@
 
 namespace pcl {
 namespace device {
-const float sigma_color = 30;  // in mm
-const float sigma_space = 4.5; // in pixels
+const float sigma_color = 30; // in mm
+// const float sigma_space = 4.5;     // in pixels
+const float theta_mean = PI / 6.0f; // 30 degrees
+const float sigma_space =
+    0.8f + 0.035f * theta_mean / (PI / 2.0f - theta_mean); // in pixels
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void
 bilateralKernel(const PtrStepSz<ushort> src,
                 PtrStep<ushort> dst,
                 float sigma_space2_inv_half,
-                float sigma_color2_inv_half)
+                float theta_mean)
 {
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
@@ -55,10 +58,17 @@ bilateralKernel(const PtrStepSz<ushort> src,
   if (x >= src.cols || y >= src.rows)
     return;
 
-  const int R = 6; // static_cast<int>(sigma_space * 1.5);
+  const int R = 3; // 6;       //static_cast<int>(sigma_space * 1.5);
   const int D = R * 2 + 1;
 
   int value = src.ptr(y)[x];
+
+  // estimate sigma_color based on depth and theta_mean
+  const float depth_m = value / 1000.0f; // in meter
+  const float sigma_color = 0.0012f + 0.0019f * (depth_m - 0.4f) * (depth_m - 0.4f) -
+                            0.0001f / sqrtf(depth_m) * theta_mean * theta_mean /
+                                (PI / 2.0f - theta_mean) / (PI / 2.0f - theta_mean);
+  const float sigma_color2_inv_half = 0.5f / (sigma_color * sigma_color);
 
   int tx = min(x - D / 2 + D, src.cols - 1);
   int ty = min(y - D / 2 + D, src.rows - 1);
@@ -127,7 +137,7 @@ pyrDownGaussKernel(const PtrStepSz<ushort> src,
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 __global__ void
-pyrDownKernel(const PtrStepSz<ushort> src, PtrStepSz<ushort> dst, float sigma_color)
+pyrDownKernel(const PtrStepSz<ushort> src, PtrStepSz<ushort> dst, float theta_mean)
 {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -138,6 +148,11 @@ pyrDownKernel(const PtrStepSz<ushort> src, PtrStepSz<ushort> dst, float sigma_co
   const int D = 5;
 
   int center = src.ptr(2 * y)[2 * x];
+  // estimate sigma_color based on depth and theta_mean
+  const float depth_m = center / 1000.0f; // in meter
+  const float sigma_color = 0.0012 + 0.0019 * (depth_m - 0.4f) * (depth_m - 0.4f) -
+                            0.0001 / sqrtf(depth_m) * theta_mean * theta_mean /
+                                (PI / 2.0f - theta_mean) / (PI / 2.0f - theta_mean);
 
   int tx = min(2 * x - D / 2 + D, src.cols - 1);
   int ty = min(2 * y - D / 2 + D, src.rows - 1);
@@ -179,7 +194,7 @@ pcl::device::bilateralFilter(const DepthMap& src, DepthMap& dst)
 
   cudaFuncSetCacheConfig(bilateralKernel, cudaFuncCachePreferL1);
   bilateralKernel<<<grid, block>>>(
-      src, dst, 0.5f / (sigma_space * sigma_space), 0.5f / (sigma_color * sigma_color));
+      src, dst, 0.5f / (sigma_space * sigma_space), theta_mean);
 
   cudaSafeCall(cudaGetLastError());
 };
@@ -194,7 +209,7 @@ pcl::device::pyrDown(const DepthMap& src, DepthMap& dst)
   dim3 grid(divUp(dst.cols(), block.x), divUp(dst.rows(), block.y));
 
   // pyrDownGaussKernel<<<grid, block>>>(src, dst, sigma_color);
-  pyrDownKernel<<<grid, block>>>(src, dst, sigma_color);
+  pyrDownKernel<<<grid, block>>>(src, dst, theta_mean);
   cudaSafeCall(cudaGetLastError());
 };
 

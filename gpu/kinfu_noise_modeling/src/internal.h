@@ -41,6 +41,8 @@
 // #include <pcl/gpu/utils/safe_call.hpp>
 #include "safe_call.hpp"
 
+#include <limits>
+
 namespace pcl {
 namespace device {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +54,8 @@ using PointType = float4;
 
 // TSDF fixed point divisor (if old format is enabled)
 constexpr int DIVISOR = std::numeric_limits<short>::max();
+constexpr int DIVISOR_2 = 255; // UCHAR_MAX;
+constexpr float PI = 3.14159265358979323846f;
 
 // Should be multiple of 32
 constexpr int VOLUME_X = 512;
@@ -294,6 +298,22 @@ integrateTsdfVolume(const PtrStepSz<ushort>& depth_raw,
                     float tranc_dist,
                     PtrStep<short2> volume,
                     DeviceArray2D<float>& depthRawScaled);
+
+/** \brief Integraes volume with weights
+ * \param[out] color_volume color volume for initialization
+ */
+
+PCL_EXPORTS void
+integrateWeightedTsdfVolume(const PtrStepSz<ushort>& depth_raw,
+                            const MapArr& nmap,
+                            const Intr& intr,
+                            const float3& volume_size,
+                            const Mat33& Rcurr_inv,
+                            const float3& tcurr,
+                            float tranc_dist,
+                            PtrStep<short2> volume,
+                            DeviceArray2D<float>& depthRawScaled,
+                            int noise_components);
 
 /** \brief Initialized color volume
  * \param[out] color_volume color volume for initialization
