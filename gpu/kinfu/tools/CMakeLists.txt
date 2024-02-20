@@ -27,7 +27,10 @@ source_group("Source Files" FILES ${srcs})
 PCL_ADD_EXECUTABLE(${the_target} COMPONENT ${SUBSUBSYS_NAME} SOURCES ${srcs} ${hdrs} BUNDLE)
 target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_visualization pcl_gpu_kinfu)
 
+find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
+  add_compile_definitions(HAVE_OPENCV)
+  include_directories(${OpenCV_INCLUDE_DIRS})
   target_link_libraries("${the_target}" ${OpenCV_LIBS})
 endif()
 

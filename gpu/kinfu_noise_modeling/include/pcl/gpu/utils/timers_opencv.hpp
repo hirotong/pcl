@@ -37,6 +37,9 @@
 #ifndef PCL_GPU_SCOPE_TIMER_CV_H
 #define PCL_GPU_SCOPE_TIMER_CV_H
 
+#if 0
+
+
 #include <opencv2/contrib/contrib.hpp>
 #include <iostream>
 
@@ -49,13 +52,16 @@ namespace pcl
             const char* name;
             cv::TickMeter tm;
             ScopeTimerCV(const char *name_) : name(name_) { tm.start(); }
-            ~ScopeTimerCV() 
+            ~ScopeTimerCV()
             {
                 tm.stop();
-                std::cout << "Time(" << name << ") = " << tm.getTimeMilli() << "ms" << std::endl;        
+                std::cout << "Time(" << name << ") = " << tm.getTimeMilli() << "ms" << std::endl;
             }
         };
     }
 }
 
 #endif /* PCL_GPU_SCOPE_TIMER_CV_H */
+
+#endif // disabled
+

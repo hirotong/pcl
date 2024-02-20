@@ -131,10 +131,10 @@ Evaluation::setMatchFile(const std::string& file)
 
 void
 Evaluation::readFile(const std::string& file,
-                     std::vector<std::pair<double, string>>& output)
+                     std::vector<std::pair<double, std::string>>& output)
 {
   char buffer[4096];
-  std::vector<std::pair<double, string>> tmp;
+  std::vector<std::pair<double, std::string>> tmp;
 
   std::ifstream iff(file.c_str());
   if (!iff) {
@@ -176,7 +176,7 @@ Evaluation::grab(double stamp, PtrStepSz<const RGB>& rgb24)
   if (bgr.empty())
     return false;
 
-  cv::cvtColor(bgr, impl_->rgb_buffer, CV_BGR2RGB);
+  cv::cvtColor(bgr, impl_->rgb_buffer, cv::COLOR_BGR2RGB);
 
   rgb24.data = impl_->rgb_buffer.ptr<RGB>();
   rgb24.cols = impl_->rgb_buffer.cols;
@@ -205,7 +205,7 @@ Evaluation::grab(double stamp, PtrStepSz<const unsigned short>& depth)
       folder_ + (accociations_.empty() ? depth_stamps_and_filenames_[i].second
                                        : accociations_[i].name1);
 
-  cv::Mat d_img = cv::imread(file, CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+  cv::Mat d_img = cv::imread(file, cv::IMREAD_ANYDEPTH | cv::IMREAD_ANYCOLOR);
   if (d_img.empty())
     return false;
 
@@ -253,7 +253,7 @@ Evaluation::grab(double stamp,
   std::string color_file = folder_ + accociations_[i].name2;
 
   cv::Mat d_img =
-      cv::imread(depth_file, CV_LOAD_IMAGE_ANYDEPTH | CV_LOAD_IMAGE_ANYCOLOR);
+      cv::imread(depth_file, cv::IMREAD_ANYDEPTH | cv::IMREAD_ANYCOLOR);
   if (d_img.empty())
     return false;
 
@@ -277,7 +277,8 @@ Evaluation::grab(double stamp,
   if (bgr.empty())
     return false;
 
-  cv::cvtColor(bgr, impl_->rgb_buffer, CV_BGR2RGB);
+  cv::cvtColor(bgr, impl_->rgb_buffer, cv::COLOR_BGR2RGB);
+ 
 
   rgb24.data = impl_->rgb_buffer.ptr<RGB>();
   rgb24.cols = impl_->rgb_buffer.cols;
@@ -302,8 +303,8 @@ Evaluation::saveAllPoses(const pcl::gpu::KinfuTracker& kinfu,
 
   std::cout << "Writing " << frame_number << " poses to " << logfile << std::endl;
 
-  ofstream path_file_stream(logfile.c_str());
-  path_file_stream.setf(ios::fixed, ios::floatfield);
+  std::ofstream path_file_stream(logfile.c_str());
+  path_file_stream.setf(std::ios::fixed, std::ios::floatfield);
 
   for (int i = 0; i < frame_number; ++i) {
     Eigen::Affine3f pose = kinfu.getCameraPose(i);

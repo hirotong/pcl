@@ -47,6 +47,7 @@
 #include <pcl/io/oni_grabber.h>
 #include <pcl/io/openni_grabber.h>
 #include <pcl/io/pcd_grabber.h>
+#include <pcl/io/image_grabber.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/io/vtk_io.h>
@@ -410,7 +411,7 @@ struct ImageView {
       views_.push_back(cv::Mat());
       cv::cvtColor(cv::Mat(480, 640, CV_8UC3, (void*)&view_host_[0]),
                    views_.back(),
-                   CV_RGB2GRAY);
+                   cv::COLOR_BGR2GRAY);
       // cv::copy(cv::Mat(480, 640, CV_8UC3, (void*)&view_host_[0]), views_.back());
     }
 #endif
@@ -1103,7 +1104,7 @@ struct KinFuApp {
           capture_.start(); // Triggers new frame
         bool has_data =
             (data_ready_cond_.wait_for(lock, 100ms) == std::cv_status::no_timeout);
-
+        std::cout << "has_data: " << has_data << "\n";
         try {
           this->execute(depth_, rgb24_, has_data);
         } catch (const std::bad_alloc& /*e*/) {
@@ -1434,13 +1435,16 @@ main(int argc, char* argv[])
 
       // Sort the read files by name
       sort(pcd_files.begin(), pcd_files.end());
+      std::cout << pcd_files[0] << std::endl;
       capture.reset(new pcl::PCDGrabber<pcl::PointXYZRGBA>(pcd_files, fps_pcd, false));
       triggered_capture = true;
       pcd_input = true;
     }
     else if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
       // init data source latter
+      float fps_eval = 15.0f;
       pc::parse_argument(argc, argv, "-match_file", match_file);
+      // capture.reset(new pcl::ImageGrabber(eval_folder, fps_eval, false, false));
     }
     else {
       capture.reset(new pcl::OpenNIGrabber());
@@ -1494,7 +1498,8 @@ main(int argc, char* argv[])
       app.registration_ = true; // since pcd provides registered rgbd
     }
     else {
-      app.initRegistration();
+      app.registration_ = true;
+      // app.initRegistration();
     }
   }
   if (pc::find_switch(argc, argv, "--integrate-colors") ||
