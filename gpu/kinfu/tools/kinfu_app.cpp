@@ -44,10 +44,10 @@
 #include <pcl/gpu/kinfu/kinfu.h>
 #include <pcl/gpu/kinfu/marching_cubes.h>
 #include <pcl/gpu/kinfu/raycaster.h>
+#include <pcl/io/image_grabber.h>
 #include <pcl/io/oni_grabber.h>
 #include <pcl/io/openni_grabber.h>
 #include <pcl/io/pcd_grabber.h>
-#include <pcl/io/image_grabber.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/io/vtk_io.h>
@@ -695,6 +695,7 @@ struct KinFuApp {
   , registration_(false)
   , integrate_colors_(false)
   , pcd_source_(false)
+  , eval_(false)
   , focal_length_(-1.f)
   , capture_(source)
   , scene_cloud_view_(viz)
@@ -1046,6 +1047,44 @@ struct KinFuApp {
     data_ready_cond_.notify_one();
   }
 
+  void
+  source_cb4(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr& DC3)
+  {
+    {
+      std::unique_lock<std::mutex> lock(data_ready_mutex_, std::try_to_lock);
+      if (exit_ || !lock)
+        return;
+
+      float scale_factor = 1.f / 5000.f;
+      int width = DC3->width;
+      int height = DC3->height;
+      depth_.cols = width;
+      depth_.rows = height;
+      depth_.step = depth_.cols * depth_.elemSize();
+      source_depth_data_.resize(depth_.cols * depth_.rows);
+
+      rgb24_.cols = width;
+      rgb24_.rows = height;
+      rgb24_.step = rgb24_.cols * rgb24_.elemSize();
+      source_image_data_.resize(rgb24_.cols * rgb24_.rows);
+
+      unsigned char* rgb = (unsigned char*)&source_image_data_[0];
+      unsigned short* depth = (unsigned short*)&source_depth_data_[0];
+
+      for (int i = 0; i < width * height; i++) {
+        PointXYZRGBA pt = DC3->at(i);
+        rgb[3 * i + 0] = pt.r;
+        rgb[3 * i + 1] = pt.g;
+        rgb[3 * i + 2] = pt.b;
+        depth[i] = pt.z * scale_factor / 0.001;
+        // std::cout << pt.z << std::endl;
+      }
+      rgb24_.data = &source_image_data_[0];
+      depth_.data = &source_depth_data_[0];
+    }
+    data_ready_cond_.notify_one();
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   void
   startMainLoop(bool triggered_capture)
@@ -1078,13 +1117,19 @@ struct KinFuApp {
           source_cb3(cloud);
         };
 
+    std::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> func4 =
+        [this](const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr& cloud) {
+          source_cb4(cloud);
+        };
+
     bool need_colors = integrate_colors_ || registration_;
     if (pcd_source_ && !capture_.providesCallback<void(
                             const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)>()) {
       std::cout
           << "grabber doesn't provide pcl::PointCloud<pcl::PointXYZRGBA> callback !\n";
     }
-    boost::signals2::connection c = pcd_source_   ? capture_.registerCallback(func3)
+    boost::signals2::connection c = eval_         ? capture_.registerCallback(func4)
+                                    : pcd_source_ ? capture_.registerCallback(func3)
                                     : need_colors ? capture_.registerCallback(func1)
                                                   : capture_.registerCallback(func2);
 
@@ -1110,8 +1155,8 @@ struct KinFuApp {
         } catch (const std::bad_alloc& /*e*/) {
           std::cout << "Bad alloc" << std::endl;
           break;
-        } catch (const std::exception& /*e*/) {
-          std::cout << "Exception" << std::endl;
+        } catch (const std::exception& e) {
+          std::cout << "Exception" << e.what() << std::endl;
           break;
         }
 
@@ -1199,6 +1244,7 @@ struct KinFuApp {
   bool registration_;
   bool integrate_colors_;
   bool pcd_source_;
+  bool eval_;
   float focal_length_;
 
   pcl::Grabber& capture_;
@@ -1442,9 +1488,13 @@ main(int argc, char* argv[])
     }
     else if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
       // init data source latter
-      float fps_eval = 15.0f;
+      float fps_eval = 100.0f;
       pc::parse_argument(argc, argv, "-match_file", match_file);
-      // capture.reset(new pcl::ImageGrabber(eval_folder, fps_eval, false, false));
+      auto image_grabber = new pcl::ImageGrabber<pcl::PointXYZRGBA>(
+          eval_folder + "depth", eval_folder + "rgb", fps_eval, false);
+      image_grabber->setCameraIntrinsics(525.f, 525.f, 319.5f, 239.5f);
+      capture.reset(image_grabber);
+       pcd_input = true;
     }
     else {
       capture.reset(new pcl::OpenNIGrabber());
@@ -1481,8 +1531,10 @@ main(int argc, char* argv[])
 
   KinFuApp app(*capture, volume_size, icp, visualization, pose_processor);
 
-  if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0)
+  if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
+    app.eval_ = true;
     app.toggleEvaluationMode(eval_folder, match_file);
+  }
 
   if (pc::find_switch(argc, argv, "--current-cloud") ||
       pc::find_switch(argc, argv, "-cc"))

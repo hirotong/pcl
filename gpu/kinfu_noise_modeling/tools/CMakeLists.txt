@@ -29,7 +29,7 @@ target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_vi
 
 find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
-  add_compile_definitions(HAVE_OPENCV)
+  # add_compile_definitions(HAVE_OPENCV)
   include_directories(${OpenCV_INCLUDE_DIRS})
   target_link_libraries("${the_target}" ${OpenCV_LIBS})
 endif()

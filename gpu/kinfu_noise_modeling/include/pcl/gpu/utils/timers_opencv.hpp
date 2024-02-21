@@ -38,8 +38,6 @@
 #define PCL_GPU_SCOPE_TIMER_CV_H
 
 #if 0
-
-
 #include <opencv2/contrib/contrib.hpp>
 #include <iostream>
 

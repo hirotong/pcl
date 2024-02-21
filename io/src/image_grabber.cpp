@@ -317,7 +317,7 @@ pcl::ImageGrabberBase::ImageGrabberImpl::loadDepthAndRGBFiles (const std::string
     if (!pcl_fs::is_directory (itr->status ())
         && isValidExtension (extension))
     {
-      if (basename.find ("depth") < std::string::npos)
+      if (pathname.find ("depth") < std::string::npos)
       {
         depth_image_files_.push_back (pathname);
       }
@@ -332,7 +332,7 @@ pcl::ImageGrabberBase::ImageGrabberImpl::loadDepthAndRGBFiles (const std::string
     if (!pcl_fs::is_directory (itr->status ())
         && isValidExtension (extension))
     {
-      if (basename.find ("rgb") < std::string::npos)
+      if (pathname.find ("rgb") < std::string::npos)
       {
         rgb_image_files_.push_back (pathname);
       }

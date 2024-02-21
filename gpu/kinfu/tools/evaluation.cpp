@@ -107,8 +107,8 @@ Evaluation::Evaluation(const std::string& folder)
   std::string depth_file = folder_ + "depth.txt";
   std::string rgb_file = folder_ + "rgb.txt";
 
-  readFile(depth_file, depth_stamps_and_filenames_);
-  readFile(rgb_file, rgb_stamps_and_filenames_);
+  // readFile(depth_file, depth_stamps_and_filenames_);
+  // readFile(rgb_file, rgb_stamps_and_filenames_);
 }
 
 void
@@ -278,7 +278,7 @@ Evaluation::grab(double stamp,
     return false;
 
   cv::cvtColor(bgr, impl_->rgb_buffer, cv::COLOR_BGR2RGB);
- 
+
 
   rgb24.data = impl_->rgb_buffer.ptr<RGB>();
   rgb24.cols = impl_->rgb_buffer.cols;
