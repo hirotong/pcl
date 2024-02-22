@@ -1494,7 +1494,7 @@ main(int argc, char* argv[])
           eval_folder + "depth", eval_folder + "rgb", fps_eval, false);
       image_grabber->setCameraIntrinsics(525.f, 525.f, 319.5f, 239.5f);
       capture.reset(image_grabber);
-      pcd_input = true;
+       pcd_input = true;
     }
     else {
       capture.reset(new pcl::OpenNIGrabber());
