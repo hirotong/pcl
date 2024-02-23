@@ -84,47 +84,6 @@ using namespace Eigen;
 using namespace std::chrono_literals;
 namespace pc = pcl::console;
 
-Eigen::Affine3f*
-params_to_matrix(std::vector<float> params)
-{
-  Eigen::Affine3f* pose = new Eigen::Affine3f(Eigen::Affine3f::Identity());
-  Eigen::Quaternionf kq(params[6], params[3], params[4], params[5]);
-  Eigen::Vector3f kt(params[0], params[1], params[2]);
-
-  pose->translate(kt);
-  pose->rotate(kq);
-
-  return pose;
-}
-
-std::vector<Eigen::Affine3f*>
-read_transformation_from_file(const std::string& filename)
-{
-  std::vector<Eigen::Affine3f*> poses;
-  std::ifstream pose_file(filename);
-
-  if (!pose_file.is_open()) {
-    std::cerr << "Could not open file " << filename << std::endl;
-    return poses;
-  }
-  pose_file.seekg(0, std::ios::beg);
-  std::string line;
-  while (getline(pose_file, line)) {
-    if (line[0] == '#')
-      continue;
-    std::vector<float> params;
-    std::istringstream ss(line);
-    std::string double_the_entry;
-    while (ss >> double_the_entry) {
-      params.push_back(std::stof(double_the_entry));
-    }
-    poses.push_back(params_to_matrix(params));
-  }
-  pose_file.close();
-
-  return poses;
-}
-
 namespace pcl {
 namespace gpu {
 void
@@ -727,8 +686,7 @@ struct KinFuApp {
            float vsz,
            int icp,
            int viz,
-           CameraPoseProcessor::Ptr pose_processor = CameraPoseProcessor::Ptr(),
-           std::vector<Eigen::Affine3f*> hints = {})
+           CameraPoseProcessor::Ptr pose_processor = CameraPoseProcessor::Ptr())
   : exit_(false)
   , scan_(false)
   , scan_mesh_(false)
@@ -746,7 +704,6 @@ struct KinFuApp {
   , icp_(icp)
   , viz_(viz)
   , pose_processor_(pose_processor)
-  , hints_(hints)
   {
     // Init Kinfu Tracker
     Eigen::Vector3f volume_size = Vector3f::Constant(vsz /*meters*/);
@@ -755,15 +712,9 @@ struct KinFuApp {
     Eigen::Matrix3f R =
         Eigen::Matrix3f::Identity(); // * AngleAxisf( pcl::deg2rad(-30.f),
                                      // Vector3f::UnitX());
-    // Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2
-    // * 1.2f);
-    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2);
+    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2 * 1.2f);
 
-    Eigen::Affine3f pose;
-    if (hints_.empty())
-      pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
-    else
-      pose = *hints[0];
+    Eigen::Affine3f pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
 
     kinfu_.setInitalCameraPose(pose);
     kinfu_.volume().setTsdfTruncDist(0.030f /*meters*/);
@@ -903,9 +854,9 @@ struct KinFuApp {
 
         // run kinfu algorithm
         if (integrate_colors_)
-          has_image = kinfu_(depth_device_, image_view_.colors_device_, hints_);
+          has_image = kinfu_(depth_device_, image_view_.colors_device_);
         else
-          has_image = kinfu_(depth_device_, hints_);
+          has_image = kinfu_(depth_device_);
       }
 
       // process camera pose
@@ -1066,7 +1017,7 @@ struct KinFuApp {
   {
     {
       std::unique_lock<std::mutex> lock(data_ready_mutex_, std::try_to_lock);
-      if (exit_ || !lock)
+      if (exit_ )
         return;
       int width = DC3->width;
       int height = DC3->height;
@@ -1197,7 +1148,7 @@ struct KinFuApp {
         if (triggered_capture)
           capture_.start(); // Triggers new frame
         bool has_data =
-            (data_ready_cond_.wait_for(lock, 100ms) == std::cv_status::no_timeout);
+            (data_ready_cond_.wait_for(lock, 1000ms) == std::cv_status::no_timeout);
         std::cout << "has_data: " << has_data << "\n";
         try {
           this->execute(depth_, rgb24_, has_data);
@@ -1320,8 +1271,8 @@ struct KinFuApp {
 
   double time_s_;
   int icp_, viz_;
+
   CameraPoseProcessor::Ptr pose_processor_;
-  std::vector<Eigen::Affine3f*> hints_;
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   static void
@@ -1566,26 +1517,19 @@ main(int argc, char* argv[])
   float volume_size = 3.f;
   pc::parse_argument(argc, argv, "-volume_size", volume_size);
 
-  int icp = 1, visualization = 1;
+  int icp = 1, visualization = 0;
   std::vector<float> depth_intrinsics;
   pc::parse_argument(argc, argv, "--icp", icp);
   pc::parse_argument(argc, argv, "--viz", visualization);
 
-  std::string gt_pose_file, camera_pose_file;
-  std::vector<Eigen::Affine3f*> hints;
-  if (pc::parse_argument(argc, argv, "-gt_pose", gt_pose_file)) {
-    // icp = 0;
-    hints = read_transformation_from_file(gt_pose_file);
-    std::cout << "hints:" << hints.size() << std::endl;
-  }
-
+  std::string camera_pose_file;
   CameraPoseProcessor::Ptr pose_processor;
   if (pc::parse_argument(argc, argv, "-save_pose", camera_pose_file) &&
       !camera_pose_file.empty()) {
     pose_processor.reset(new CameraPoseWriter(camera_pose_file));
   }
 
-  KinFuApp app(*capture, volume_size, icp, visualization, pose_processor, hints);
+  KinFuApp app(*capture, volume_size, icp, visualization, pose_processor);
 
   if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
     app.eval_ = true;

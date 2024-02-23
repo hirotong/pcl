@@ -46,18 +46,22 @@
 #include <pcl/pcl_macros.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/gpu/kinfu/zivid_related.h>
+
 
 #include <Eigen/Core>
 
 #include <vector>
 
 // Focal lengths of RGB camera
-#define KINFU_DEFAULT_RGB_FOCAL_X 525.f
-#define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
+#define KINFU_DEFAULT_RGB_FOCAL_X f_x1
+#define KINFU_DEFAULT_RGB_FOCAL_Y f_y1
 
 // Focal lengths of depth (i.e. NIR) camera
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 525.f
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 525.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_X depth_focal_x
+#define KINFU_DEFAULT_DEPTH_FOCAL_Y depth_focal_y
+
+#
 
 namespace pcl {
 namespace gpu {
@@ -79,7 +83,7 @@ public:
    * \param[in] rows height of depth image
    * \param[in] cols width of depth image
    */
-  KinfuTracker(int rows = 480, int cols = 640);
+  KinfuTracker(int rows = Height1, int cols = Width1);
 
   /** \brief Sets Depth camera intrinsics
    * \param[in] fx focal length x
@@ -152,14 +156,6 @@ public:
   bool
   operator()(const DepthMap& depth, Eigen::Affine3f* hint = nullptr);
 
-  /** \brief Processes next frame.
-   * \param[in] depth next frame with values in millimeters
-   * \param hint
-   * \return true if can render 3D view.
-   */
-  bool
-  operator()(const DepthMap& depth, std::vector<Eigen::Affine3f*> hints);
-
   /** \brief Processes next frame (both depth and color integration). Please call
    * initColorIntegration before invpoking this. \param[in] depth next depth frame with
    * values in millimeters \param[in] colors next RGB frame \return true if can render
@@ -167,11 +163,6 @@ public:
    */
   bool
   operator()(const DepthMap& depth, const View& colors);
-
-  bool
-  operator()(const DepthMap& depth,
-             const View& colors,
-             std::vector<Eigen::Affine3f*> hints);
 
   /** \brief Returns camera pose at given time, default the last pose
    * \param[in] time Index of frame for which camera pose is returned.

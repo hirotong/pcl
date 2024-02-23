@@ -34,10 +34,10 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${command:cmake.launchTargetPath}",
-            "args": ["-r", "-pcd", "/home/ton068/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_rpy/pcd"],
+            "args": ["-r", "-pcd", "/home/ton068/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_rpy/pcd", "-gt_pose", "/home/ton068/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_rpy/associate_gt.txt"],
             "stopAtEntry": true,
             "cwd": "${fileDirname}",
-            "environment": [{"name": "DISPLAY", "value": "localhost:12.0"}],
+            "environment": [{"name": "DISPLAY", "value": "localhost:10.0"}],
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [
@@ -52,6 +52,34 @@
                     "ignoreFailures": true
                 }
             ]
+        },
+        {
+          "name": "(gdb) Launch zivid",
+          "type": "cppdbg",
+          "request": "launch",
+          "program": "${command:cmake.launchTargetPath}",
+          "args": [
+            "-r",
+            "-pcd",
+            "/mnt/d61-jca20-recon/source/Noise_model/Ganesh0_conv/pcd",
+          ],
+          "stopAtEntry": true,
+          "cwd": "${fileDirname}",
+          "environment": [{ "name": "DISPLAY", "value": "localhost:14.0" }],
+          "externalConsole": false,
+          "MIMode": "gdb",
+          "setupCommands": [
+            {
+              "description": "Enable pretty-printing for gdb",
+              "text": "-enable-pretty-printing",
+              "ignoreFailures": true
+            },
+            {
+              "description": "Set Disassembly Flavor to Intel",
+              "text": "-gdb-set disassembly-flavor intel",
+              "ignoreFailures": true
+            }
+          ]
         }
 
     ]

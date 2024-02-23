@@ -1,6 +1,6 @@
 set(SUBSUBSYS_NAME tools)
 set(SUBSUBSYS_DESC "Kinfu tools")
-set(SUBSUBSYS_DEPS gpu_kinfu_compatible visualization)
+set(SUBSUBSYS_DEPS gpu_kinfu_zivid visualization)
 set(SUBSUBSYS_OPT_DEPS opencv)
 set(EXT_DEPS glew openni)
 set(DEFAULT TRUE)
@@ -19,13 +19,13 @@ file(GLOB hdrs "*.h*")
 include_directories(SYSTEM ${OPENNI_INCLUDE_DIRS})
 
 ## KINECT FUSION
-set(the_target pcl_kinfu_app_compatible)
+set(the_target pcl_kinfu_app_zivid)
 set(srcs kinfu_app.cpp capture.cpp evaluation.cpp)
 
 source_group("Source Files" FILES ${srcs})
 
 PCL_ADD_EXECUTABLE(${the_target} COMPONENT ${SUBSUBSYS_NAME} SOURCES ${srcs} ${hdrs} BUNDLE)
-target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_visualization pcl_gpu_kinfu_compatible)
+target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_visualization pcl_gpu_kinfu)
 
 find_package(OpenCV REQUIRED)
 if(OpenCV_FOUND)
@@ -34,9 +34,9 @@ if(OpenCV_FOUND)
   target_link_libraries("${the_target}" ${OpenCV_LIBS})
 endif()
 
-# ## RECORD TSDFVOLUME
-set(the_target pcl_record_tsdfvolume_compatible)
+## RECORD TSDFVOLUME
+set(the_target pcl_record_tsdfvolume_zivid)
 set(srcs record_tsdfvolume.cpp capture.cpp)
 
 PCL_ADD_EXECUTABLE(${the_target} COMPONENT ${SUBSUBSYS_NAME} SOURCES ${srcs} ${hdrs})
-target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_visualization pcl_gpu_kinfu_compatible)
+target_link_libraries(${the_target} pcl_common pcl_io ${OPENNI_LIBRARIES} pcl_visualization pcl_gpu_kinfu)

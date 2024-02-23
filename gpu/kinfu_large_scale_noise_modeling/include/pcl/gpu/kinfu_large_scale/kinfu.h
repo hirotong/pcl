@@ -37,11 +37,7 @@
 
 #pragma once
 
-#include <pcl/gpu/containers/device_array.h>
-#include <pcl/gpu/kinfu/color_volume.h>
-#include <pcl/gpu/kinfu/pixel_rgb.h>
-#include <pcl/gpu/kinfu/raycaster.h>
-#include <pcl/gpu/kinfu/tsdf_volume.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/memory.h>
 #include <pcl/pcl_macros.h>
 #include <pcl/point_cloud.h>
@@ -50,24 +46,28 @@
 #include <Eigen/Core>
 
 #include <vector>
+// #include <boost/graph/buffer_concepts.hpp>
 
-// Focal lengths of RGB camera
-#define KINFU_DEFAULT_RGB_FOCAL_X 525.f
-#define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
-
-// Focal lengths of depth (i.e. NIR) camera
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 525.f
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 525.f
+#include <pcl/gpu/containers/device_array.h>
+#include <pcl/gpu/kinfu_large_scale/color_volume.h>
+#include <pcl/gpu/kinfu_large_scale/cyclical_buffer.h>
+#include <pcl/gpu/kinfu_large_scale/device.h>
+#include <pcl/gpu/kinfu_large_scale/float3_operations.h>
+#include <pcl/gpu/kinfu_large_scale/pixel_rgb.h>
+#include <pcl/gpu/kinfu_large_scale/raycaster.h>
+#include <pcl/gpu/kinfu_large_scale/tsdf_volume.h>
+// #include <pcl/gpu/kinfu_large_scale/standalone_marching_cubes.h>
 
 namespace pcl {
 namespace gpu {
+namespace kinfuLS {
 /** \brief KinfuTracker class encapsulates implementation of Microsoft Kinect Fusion
  * algorithm \author Anatoly Baskeheev, Itseez Ltd, (myname.mysurname@mycompany.com)
  */
 class PCL_EXPORTS KinfuTracker {
 public:
   /** \brief Pixel type for rendered image. */
-  using PixelRGB = pcl::gpu::PixelRGB;
+  using PixelRGB = pcl::gpu::kinfuLS::PixelRGB;
 
   using View = DeviceArray2D<PixelRGB>;
   using DepthMap = DeviceArray2D<unsigned short>;
@@ -75,11 +75,31 @@ public:
   using PointType = pcl::PointXYZ;
   using NormalType = pcl::Normal;
 
+  void
+  performLastScan()
+  {
+    perform_last_scan_ = true;
+    PCL_WARN("Kinfu will exit after next shift\n");
+  }
+
+  bool
+  isFinished()
+  {
+    return (finished_);
+  }
+
   /** \brief Constructor
+   * \param[in] volumeSize physical size of the volume represented by the tdsf volume.
+   * In meters. \param[in] shiftingDistance when the camera target point is farther than
+   * shiftingDistance from the center of the volume, shiting occurs. In meters. \note
+   * The target point is located at (0, 0, 0.6*volumeSize) in camera coordinates.
    * \param[in] rows height of depth image
    * \param[in] cols width of depth image
    */
-  KinfuTracker(int rows = 480, int cols = 640);
+  KinfuTracker(const Eigen::Vector3f& volumeSize,
+               const float shiftingDistance,
+               int rows = 480,
+               int cols = 640);
 
   /** \brief Sets Depth camera intrinsics
    * \param[in] fx focal length x
@@ -90,20 +110,11 @@ public:
   void
   setDepthIntrinsics(float fx, float fy, float cx = -1, float cy = -1);
 
-  /** \brief Get Depth camera intrinsics
-   * \param[out] fx focal length x
-   * \param[out] fy focal length y
-   * \param[out] cx principal point x
-   * \param[out] cy principal point y
-   */
-  void
-  getDepthIntrinsics(float& fx, float& fy, float& cx, float& cy) const;
-
   /** \brief Sets initial camera pose relative to volume coordinate space
    * \param[in] pose Initial camera pose
    */
   void
-  setInitalCameraPose(const Eigen::Affine3f& pose);
+  setInitialCameraPose(const Eigen::Affine3f& pose);
 
   /** \brief Sets truncation threshold for depth image for ICP step only! This helps
    *  to filter measurements that are outside tsdf volume. Pass zero to disable the
@@ -146,19 +157,10 @@ public:
 
   /** \brief Processes next frame.
    * \param[in] depth next frame with values in millimeters
-   * \param hint
    * \return true if can render 3D view.
    */
   bool
-  operator()(const DepthMap& depth, Eigen::Affine3f* hint = nullptr);
-
-  /** \brief Processes next frame.
-   * \param[in] depth next frame with values in millimeters
-   * \param hint
-   * \return true if can render 3D view.
-   */
-  bool
-  operator()(const DepthMap& depth, std::vector<Eigen::Affine3f*> hints);
+  operator()(const DepthMap& depth);
 
   /** \brief Processes next frame (both depth and color integration). Please call
    * initColorIntegration before invpoking this. \param[in] depth next depth frame with
@@ -168,17 +170,15 @@ public:
   bool
   operator()(const DepthMap& depth, const View& colors);
 
-  bool
-  operator()(const DepthMap& depth,
-             const View& colors,
-             std::vector<Eigen::Affine3f*> hints);
-
   /** \brief Returns camera pose at given time, default the last pose
    * \param[in] time Index of frame for which camera pose is returned.
    * \return camera pose
    */
   Eigen::Affine3f
   getCameraPose(int time = -1) const;
+
+  Eigen::Affine3f
+  getLastEstimatedPose() const;
 
   /** \brief Returns number of poses including initial */
   std::size_t
@@ -218,11 +218,53 @@ public:
   void
   getLastFrameNormals(DeviceArray2D<NormalType>& normals) const;
 
-  /** \brief Disables ICP forever */
+  /** \brief Returns pointer to the cyclical buffer structure
+   */
+  tsdf_buffer*
+  getCyclicalBufferStructure()
+  {
+    return (cyclical_.getBuffer());
+  }
+
+  /** \brief Extract the world and save it.
+   */
   void
-  disableIcp();
+  extractAndSaveWorld();
+
+  /** \brief Returns true if ICP is currently lost */
+  bool
+  icpIsLost()
+  {
+    return (lost_);
+  }
+
+  /** \brief Performs the tracker reset to initial  state. It's used if camera tracking
+   * fails. */
+  void
+  reset();
+
+  void
+  setDisableICP()
+  {
+    disable_icp_ = !disable_icp_;
+    PCL_WARN("ICP is %s\n", !disable_icp_ ? "ENABLED" : "DISABLED");
+  }
+
+  /** \brief Return whether the last update resulted in a shift */
+  inline bool
+  hasShifted() const
+  {
+    return (has_shifted_);
+  }
 
 private:
+  /** \brief Allocates all GPU internal buffers.
+   * \param[in] rows_arg
+   * \param[in] cols_arg
+   */
+  void
+  allocateBufffers(int rows_arg, int cols_arg);
+
   /** \brief Number of pyramid levels */
   enum { LEVELS = 3 };
 
@@ -235,10 +277,109 @@ private:
   using Matrix3frm = Eigen::Matrix<float, 3, 3, Eigen::RowMajor>;
   using Vector3f = Eigen::Vector3f;
 
+  /** \brief helper function that converts transforms from host to device types
+   * \param[in] transformIn1 first transform to convert
+   * \param[in] transformIn2 second transform to convert
+   * \param[in] translationIn1 first translation to convert
+   * \param[in] translationIn2 second translation to convert
+   * \param[out] transformOut1 result of first transform conversion
+   * \param[out] transformOut2 result of second transform conversion
+   * \param[out] translationOut1 result of first translation conversion
+   * \param[out] translationOut2 result of second translation conversion
+   */
+  inline void
+  convertTransforms(Matrix3frm& transform_in_1,
+                    Matrix3frm& transform_in_2,
+                    Eigen::Vector3f& translation_in_1,
+                    Eigen::Vector3f& translation_in_2,
+                    pcl::device::kinfuLS::Mat33& transform_out_1,
+                    pcl::device::kinfuLS::Mat33& transform_out_2,
+                    float3& translation_out_1,
+                    float3& translation_out_2);
+
+  /** \brief helper function that converts transforms from host to device types
+   * \param[in] transformIn1 first transform to convert
+   * \param[in] transformIn2 second transform to convert
+   * \param[in] translationIn translation to convert
+   * \param[out] transformOut1 result of first transform conversion
+   * \param[out] transformOut2 result of second transform conversion
+   * \param[out] translationOut result of translation conversion
+   */
+  inline void
+  convertTransforms(Matrix3frm& transform_in_1,
+                    Matrix3frm& transform_in_2,
+                    Eigen::Vector3f& translation_in,
+                    pcl::device::kinfuLS::Mat33& transform_out_1,
+                    pcl::device::kinfuLS::Mat33& transform_out_2,
+                    float3& translation_out);
+
+  /** \brief helper function that converts transforms from host to device types
+   * \param[in] transformIn transform to convert
+   * \param[in] translationIn translation to convert
+   * \param[out] transformOut result of transform conversion
+   * \param[out] translationOut result of translation conversion
+   */
+  inline void
+  convertTransforms(Matrix3frm& transform_in,
+                    Eigen::Vector3f& translation_in,
+                    pcl::device::kinfuLS::Mat33& transform_out,
+                    float3& translation_out);
+
+  /** \brief helper function that pre-process a raw detph map the kinect fusion
+   * algorithm. The raw depth map is first blurred, eventually truncated, and
+   * downsampled for each pyramid level. Then, vertex and normal maps are computed for
+   * each pyramid level. \param[in] depth_raw the raw depth map to process \param[in]
+   * cam_intrinsics intrinsics of the camera used to acquire the depth map
+   */
+  inline void
+  prepareMaps(const DepthMap& depth_raw,
+              const pcl::device::kinfuLS::Intr& cam_intrinsics);
+
+  /** \brief helper function that performs GPU-based ICP, using vertex and normal maps
+   * stored in v/nmaps_curr_ and v/nmaps_g_prev_ The function requires the previous
+   * local camera pose (translation and inverted rotation) as well as camera intrinsics.
+   * It will return the newly computed pose found as global rotation and translation.
+   * \param[in] cam_intrinsics intrinsics of the camera
+   * \param[in] previous_global_rotation previous local rotation of the camera
+   * \param[in] previous_global_translation previous local translation of the camera
+   * \param[out] current_global_rotation computed global rotation
+   * \param[out] current_global_translation computed global translation
+   * \return true if ICP has converged.
+   */
+  inline bool
+  performICP(const pcl::device::kinfuLS::Intr& cam_intrinsics,
+             Matrix3frm& previous_global_rotation,
+             Vector3f& previous_global_translation,
+             Matrix3frm& current_global_rotation,
+             Vector3f& current_global_translation);
+
+  /** \brief helper function that performs GPU-based ICP, using the current and the
+   * previous depth-maps (i.e. not using the synthetic depth map generated from the
+   * tsdf-volume) The function requires camera intrinsics. It will return the
+   * transformation between the previous and the current depth map. \param[in]
+   * cam_intrinsics intrinsics of the camera \param[out] resulting_rotation computed
+   * global rotation \param[out] resulting_translation computed global translation
+   * \return true if ICP has converged.
+   */
+  inline bool
+  performPairWiseICP(const pcl::device::kinfuLS::Intr cam_intrinsics,
+                     Matrix3frm& resulting_rotation,
+                     Vector3f& resulting_translation);
+
+  /** \brief Helper function that copies v_maps_curr and n_maps_curr to v_maps_prev_ and
+   * n_maps_prev_ */
+  inline void
+  saveCurrentMaps();
+
+  /** \brief Cyclical buffer object */
+  CyclicalBuffer cyclical_;
+
   /** \brief Height of input depth image. */
   int rows_;
+
   /** \brief Width of input depth image. */
   int cols_;
+
   /** \brief Frame counter */
   int global_time_;
 
@@ -250,6 +391,8 @@ private:
 
   /** \brief Tsdf volume container. */
   TsdfVolume::Ptr tsdf_volume_;
+
+  /** \brief Color volume container. */
   ColorVolume::Ptr color_volume_;
 
   /** \brief Initial camera rotation in volume coo space. */
@@ -260,28 +403,40 @@ private:
 
   /** \brief array with IPC iteration numbers for each pyramid level */
   int icp_iterations_[LEVELS];
+
   /** \brief distance threshold in correspondences filtering */
   float distThres_;
+
   /** \brief angle threshold in correspondences filtering. Represents max sine of angle
    * between normals. */
   float angleThres_;
 
   /** \brief Depth pyramid. */
   std::vector<DepthMap> depths_curr_;
+
   /** \brief Vertex maps pyramid for current frame in global coordinate space. */
   std::vector<MapArr> vmaps_g_curr_;
+
   /** \brief Normal maps pyramid for current frame in global coordinate space. */
   std::vector<MapArr> nmaps_g_curr_;
 
   /** \brief Vertex maps pyramid for previous frame in global coordinate space. */
   std::vector<MapArr> vmaps_g_prev_;
+
   /** \brief Normal maps pyramid for previous frame in global coordinate space. */
   std::vector<MapArr> nmaps_g_prev_;
 
   /** \brief Vertex maps pyramid for current frame in current coordinate space. */
   std::vector<MapArr> vmaps_curr_;
+
   /** \brief Normal maps pyramid for current frame in current coordinate space. */
   std::vector<MapArr> nmaps_curr_;
+
+  /** \brief Vertex maps pyramid for previous frame in current coordinate space. */
+  std::vector<MapArr> vmaps_prev_;
+
+  /** \brief Normal maps pyramid for previous frame in current coordinate space. */
+  std::vector<MapArr> nmaps_prev_;
 
   /** \brief Array of buffers with ICP correspondences for each pyramid level. */
   std::vector<CorespMap> coresps_;
@@ -291,6 +446,7 @@ private:
 
   /** \brief Temporary buffer for ICP */
   DeviceArray2D<double> gbuf_;
+
   /** \brief Buffer to store MLS matrix. */
   DeviceArray<double> sumbuf_;
 
@@ -304,24 +460,39 @@ private:
    * exceeds some value. */
   float integration_metric_threshold_;
 
-  /** \brief ICP step is completely disabled. Only integration now. */
+  /** \brief When set to true, KinFu will extract the whole world and mesh it. */
+  bool perform_last_scan_;
+
+  /** \brief When set to true, KinFu notifies that it is finished scanning and can be
+   * stopped. */
+  bool finished_;
+
+  /** \brief // when the camera target point is farther than DISTANCE_THRESHOLD from the
+   * current cube's center, shifting occurs. In meters . */
+  float shifting_distance_;
+
+  /** \brief Size of the TSDF volume in meters. */
+  float volume_size_;
+
+  /** \brief True if ICP is lost */
+  bool lost_;
+
+  /** \brief Last estimated rotation (estimation is done via pairwise alignment when ICP
+   * is failing) */
+  Matrix3frm last_estimated_rotation_;
+
+  /** \brief Last estimated translation (estimation is done via pairwise alignment when
+   * ICP is failing) */
+  Vector3f last_estimated_translation_;
+
   bool disable_icp_;
 
-  /** \brief Allocates all GPU internal buffers.
-   * \param[in] rows_arg
-   * \param[in] cols_arg
-   */
-  void
-  allocateBufffers(int rows_arg, int cols_arg);
-
-  /** \brief Performs the tracker reset to initial  state. It's used if case of camera
-   * tracking fail.
-   */
-  void
-  reset();
+  /** \brief True or false depending on if there was a shift in the last pose update */
+  bool has_shifted_;
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
 };
+} // namespace kinfuLS
 } // namespace gpu
 }; // namespace pcl
