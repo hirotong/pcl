@@ -1117,6 +1117,7 @@ struct KinFuApp {
           viz_ ? !image_view_.viewerScene_->wasStopped() : true;
 
       static int frame_idx = 0;
+      int skip_count = 0;
       while (!exit_ && scene_view_not_stopped && image_view_not_stopped) {
         if (triggered_capture)
           capture_.start(); // Triggers new frame
@@ -1124,6 +1125,10 @@ struct KinFuApp {
             (data_ready_cond_.wait_for(lock, 100ms) == std::cv_status::no_timeout);
         if (has_data) {
           std::cout << "Frame index: " << frame_idx++ << "\n";
+          skip_count = 0;
+        }
+        else{
+          skip_count++;
         }
         try {
           this->execute(depth_, rgb24_, has_data);
@@ -1137,6 +1142,9 @@ struct KinFuApp {
 
         if (viz_)
           scene_cloud_view_.cloud_viewer_->spinOnce(3);
+
+        if (skip_count > 100)
+          break;
       }
 
       if (!triggered_capture)
@@ -1261,6 +1269,8 @@ struct KinFuApp {
     if (e.keyUp())
       switch (key) {
       case 27:
+      case (int)'q':
+      case (int)'Q':
         app->exit_ = true;
         break;
       case (int)'t':
@@ -1440,7 +1450,8 @@ main(int argc, char* argv[])
   bool triggered_capture = false;
   bool pcd_input = false;
 
-  std::string eval_folder, match_file, openni_device, oni_file, pcd_dir;
+  std::string eval_folder, match_file, openni_device, oni_file, pcd_dir, base_dir,
+      kinfu_dir;
   try {
     if (pc::parse_argument(argc, argv, "-dev", openni_device) > 0) {
       capture.reset(new pcl::OpenNIGrabber(openni_device));
@@ -1451,6 +1462,11 @@ main(int argc, char* argv[])
       capture.reset(new pcl::ONIGrabber(oni_file, repeat, false));
     }
     else if (pc::parse_argument(argc, argv, "-pcd", pcd_dir) > 0) {
+      base_dir = pcl_fs::path(pcd_dir).parent_path().string();
+      kinfu_dir = base_dir + "/kinfu";
+      if (!pcl_fs::exists(kinfu_dir)) {
+        pcl_fs::create_directory(kinfu_dir);
+      }
       float fps_pcd = 15.0f;
       pc::parse_argument(argc, argv, "-pcd_fps", fps_pcd);
 
@@ -1547,8 +1563,16 @@ main(int argc, char* argv[])
   }
 
   // save mesh and point cloud when quit the program.
+  app.scene_cloud_view_.show(app.kinfu_, app.integrate_colors_);
+  app.scene_cloud_view_.showMesh(app.kinfu_, app.integrate_colors_);
   app.writeMesh(7);
   app.writeCloud(1);
+
+  pcl_fs::copy_file("mesh.ply",
+                    kinfu_dir + "/mesh_nc" + std::to_string(noise_components) + ".ply", pcl_fs::copy_options::overwrite_existing);
+  pcl_fs::copy_file("cloud_bin.pcd",
+                    kinfu_dir + "/cloud_nc" + std::to_string(noise_components) +
+                        ".pcd", pcl_fs::copy_options::overwrite_existing);
 
 #ifdef HAVE_OPENCV
   for (std::size_t t = 0; t < app.image_view_.views_.size(); ++t) {
