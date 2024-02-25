@@ -82,6 +82,10 @@
         "mutex": "cpp",
         "shared_mutex": "cpp",
         "valarray": "cpp",
-        "__nullptr": "cpp"
+        "__nullptr": "cpp",
+        "any": "cpp",
+        "coroutine": "cpp",
+        "forward_list": "cpp",
+        "source_location": "cpp"
     }
 }

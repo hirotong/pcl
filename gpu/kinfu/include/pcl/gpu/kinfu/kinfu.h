@@ -56,8 +56,8 @@
 #define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
 
 // Focal lengths of depth (i.e. NIR) camera
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 585.f
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 585.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_X 525.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_Y 525.f
 
 namespace pcl {
 namespace gpu {

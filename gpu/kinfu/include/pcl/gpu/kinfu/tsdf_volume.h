@@ -138,7 +138,7 @@ public:
                DeviceArray<NormalType>& normals) const;
 
   /** \brief Downloads tsdf volume from GPU memory.
-   * \param[out] tsdf Array with tsdf values. if volume resolution is 512x512x512, so
+   * \param[out] tsdf Array with tsdf values. if volume resolution is x512x512, so
    * for voxel (x,y,z) tsdf value can be retrieved as volume[512*512*z + 512*y + x];
    */
   void

@@ -332,7 +332,7 @@ struct CurrentFrameCloudView {
         visualization::PCL_VISUALIZER_POINT_SIZE, 1);
     cloud_viewer_.addCoordinateSystem(1.0);
     cloud_viewer_.initCameraParameters();
-    cloud_viewer_.setPosition(0, 500);
+    cloud_viewer_.setPosition(0, 600);
     cloud_viewer_.setSize(640, 480);
     cloud_viewer_.setCameraClipDistances(0.01, 10.01);
   }
@@ -505,7 +505,7 @@ struct SceneCloudView {
       cloud_viewer_->setBackgroundColor(0, 0, 0);
       cloud_viewer_->addCoordinateSystem(1.0);
       cloud_viewer_->initCameraParameters();
-      cloud_viewer_->setPosition(0, 500);
+      cloud_viewer_->setPosition(0, 600);
       cloud_viewer_->setSize(640, 480);
       cloud_viewer_->setCameraClipDistances(0.01, 10.01);
 
@@ -702,6 +702,7 @@ struct KinFuApp {
   , independent_camera_(false)
   , registration_(false)
   , integrate_colors_(false)
+  , pcd_source_(false)
   , focal_length_(-1.f)
   , capture_(source)
   , scene_cloud_view_(viz)
@@ -725,7 +726,7 @@ struct KinFuApp {
 
     Eigen::Affine3f pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
 
-    kinfu_.setDepthIntrinsics(KINFU_ZIVID_DEPTH_FOCAL_X, KINFU_ZIVID_DEPTH_FOCAL_Y);
+    kinfu_.setDepthIntrinsics(KINFU_DEFAULT_RGB_FOCAL_X, KINFU_DEFAULT_RGB_FOCAL_Y);
     kinfu_.setNoiseComponents(noise_components);
     kinfu_.setInitalCameraPose(pose);
     kinfu_.volume().setTsdfTruncDist(0.030f /*meters*/);
@@ -1027,41 +1028,40 @@ struct KinFuApp {
     data_ready_cond_.notify_one();
   }
 
-  // void
-  // source_cb3 (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr & DC3)
-  // {
-  //   {
-  //     std::unique_lock<std::mutex> lock (data_ready_mutex_, std::try_to_lock);
-  //     if (exit_ || !lock)
-  //       return;
-  //     int width  = DC3->width;
-  //     int height = DC3->height;
-  //     depth_.cols = width;
-  //     depth_.rows = height;
-  //     depth_.step = depth_.cols * depth_.elemSize ();
-  //     source_depth_data_.resize (depth_.cols * depth_.rows);
+  void
+  source_cb3(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr& DC3)
+  {
+    {
+      std::unique_lock<std::mutex> lock(data_ready_mutex_, std::try_to_lock);
+      if (exit_ || !lock)
+        return;
+      int width = DC3->width;
+      int height = DC3->height;
+      depth_.cols = width;
+      depth_.rows = height;
+      depth_.step = depth_.cols * depth_.elemSize();
+      source_depth_data_.resize(depth_.cols * depth_.rows);
 
-  //     rgb24_.cols = width;
-  //     rgb24_.rows = height;
-  //     rgb24_.step = rgb24_.cols * rgb24_.elemSize ();
-  //     source_image_data_.resize (rgb24_.cols * rgb24_.rows);
+      rgb24_.cols = width;
+      rgb24_.rows = height;
+      rgb24_.step = rgb24_.cols * rgb24_.elemSize();
+      source_image_data_.resize(rgb24_.cols * rgb24_.rows);
 
-  //     unsigned char *rgb    = (unsigned char *)  &source_image_data_[0];
-  //     unsigned short *depth = (unsigned short *) &source_depth_data_[0];
+      unsigned char* rgb = (unsigned char*)&source_image_data_[0];
+      unsigned short* depth = (unsigned short*)&source_depth_data_[0];
 
-  //     for (int i=0; i < width*height; i++)
-  //     {
-  //       PointXYZRGBA pt = DC3->at (i);
-  //       rgb[3*i +0] = pt.r;
-  //       rgb[3*i +1] = pt.g;
-  //       rgb[3*i +2] = pt.b;
-  //       depth[i]    = pt.z/0.001;
-  //     }
-  //     rgb24_.data = &source_image_data_[0];
-  //     depth_.data = &source_depth_data_[0];
-  //   }
-  //   data_ready_cond_.notify_one ();
-  // }
+      for (int i = 0; i < width * height; i++) {
+        PointXYZRGBA pt = DC3->at(i);
+        rgb[3 * i + 0] = pt.r;
+        rgb[3 * i + 1] = pt.g;
+        rgb[3 * i + 2] = pt.b;
+        depth[i] = pt.z / 0.001;
+      }
+      rgb24_.data = &source_image_data_[0];
+      depth_.data = &source_depth_data_[0];
+    }
+    data_ready_cond_.notify_one();
+  }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   void
@@ -1090,21 +1090,20 @@ struct KinFuApp {
         is_oni ? func1_oni : func1_dev;
     std::function<void(const DepthImagePtr&)> func2 = is_oni ? func2_oni : func2_dev;
 
-    // std::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&) > func3
-    // = [this] (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr& cloud)
-    // {
-    //   source_cb3 (cloud);
-    // };
+    std::function<void(const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> func3 =
+        [this](const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr& cloud) {
+          source_cb3(cloud);
+        };
 
     bool need_colors = integrate_colors_ || registration_;
-    // if ( pcd_source_ && !capture_.providesCallback<void (const
-    // pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)>() )
-    // {
-    //   std::cout << "grabber doesn't provide pcl::PointCloud<pcl::PointXYZRGBA>
-    //   callback !\n";
-    // }
-    boost::signals2::connection c = need_colors ? capture_.registerCallback(func1)
-                                                : capture_.registerCallback(func2);
+    if (pcd_source_ && !capture_.providesCallback<void(
+                            const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)>()) {
+      std::cout
+          << "grabber doesn't provide pcl::PointCloud<pcl::PointXYZRGBA> callback !\n ";
+    }
+    boost::signals2::connection c = pcd_source_   ? capture_.registerCallback(func3)
+                                    : need_colors ? capture_.registerCallback(func1)
+                                                  : capture_.registerCallback(func2);
 
     {
       std::unique_lock<std::mutex> lock(data_ready_mutex_);
@@ -1117,12 +1116,15 @@ struct KinFuApp {
       bool image_view_not_stopped =
           viz_ ? !image_view_.viewerScene_->wasStopped() : true;
 
+      static int frame_idx = 0;
       while (!exit_ && scene_view_not_stopped && image_view_not_stopped) {
         if (triggered_capture)
           capture_.start(); // Triggers new frame
         bool has_data =
             (data_ready_cond_.wait_for(lock, 100ms) == std::cv_status::no_timeout);
-
+        if (has_data) {
+          std::cout << "Frame index: " << frame_idx++ << "\n";
+        }
         try {
           this->execute(depth_, rgb24_, has_data);
         } catch (const std::bad_alloc& /*e*/) {
@@ -1218,7 +1220,7 @@ struct KinFuApp {
 
   bool registration_;
   bool integrate_colors_;
-  // bool pcd_source_;
+  bool pcd_source_;
   float focal_length_;
 
   pcl::Grabber& capture_;
@@ -1436,7 +1438,7 @@ main(int argc, char* argv[])
   std::unique_ptr<pcl::Grabber> capture;
 
   bool triggered_capture = false;
-  // bool pcd_input = false;
+  bool pcd_input = false;
 
   std::string eval_folder, match_file, openni_device, oni_file, pcd_dir;
   try {
@@ -1456,11 +1458,11 @@ main(int argc, char* argv[])
 
       // Sort the read files by name and display in the order to be used by KinFu
       sort(pcd_files.begin(), pcd_files.end());
-      for (int i = 0; i < pcd_files.size(); i++)
+      for (size_t i = 0; i < pcd_files.size(); i++)
         cout << "added: " << pcd_files[i] << endl;
       capture.reset(new pcl::PCDGrabber<pcl::PointXYZRGBA>(pcd_files, fps_pcd, false));
       // triggered_capture = true;
-      // pcd_input = true;
+      pcd_input = true;
     }
     else if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
       // init data source latter
@@ -1515,8 +1517,16 @@ main(int argc, char* argv[])
 
   if (pc::find_switch(argc, argv, "--registration") ||
       pc::find_switch(argc, argv, "-r")) {
-    app.initRegistration();
+    if (pcd_input) {
+      app.pcd_source_ = true;
+      app.registration_ = true;
+    }
+    else {
+      app.registration_ = true;
+      app.initRegistration();
+    }
   }
+
   if (pc::find_switch(argc, argv, "--integrate-colors") ||
       pc::find_switch(argc, argv, "-ic"))
     app.toggleColorIntegration();
@@ -1535,6 +1545,10 @@ main(int argc, char* argv[])
   } catch (const std::exception& /*e*/) {
     std::cout << "Exception" << std::endl;
   }
+
+  // save mesh and point cloud when quit the program.
+  app.writeMesh(7);
+  app.writeCloud(1);
 
 #ifdef HAVE_OPENCV
   for (std::size_t t = 0; t < app.image_view_.views_.size(); ++t) {

@@ -1,86 +1,36 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-      {
-        "name": "(gdb) Launch: eval",
-        "type": "cppdbg",
-        "request": "launch",
-        "program": "${command:cmake.launchTargetPath}",
-        "args": ["-r", "-eval", "/home/ton068/kinect_data/rgbd_dataset_freiburg1_desk/processed/"],
-        "stopAtEntry": false,
-        "cwd": "${fileDirname}",
-        "environment": [{"name": "DISPLAY", "value": "localhost:10.0"}],
-        "externalConsole": false,
-        "MIMode": "gdb",
-        "setupCommands": [
-            {
-                "description": "Enable pretty-printing for gdb",
-                "text": "-enable-pretty-printing",
-                "ignoreFailures": true
-            },
-            {
-                "description": "Set Disassembly Flavor to Intel",
-                "text": "-gdb-set disassembly-flavor intel",
-                "ignoreFailures": true
-            }
-        ]
-      },
-
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "(gdb) Launch",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": [
+        "-r",
+        "-pcd",
+        "/home/ton068/d61-jca-recon/work/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/pcd"
+      ],
+      "stopAtEntry": true,
+      "cwd": "${fileDirname}",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
         {
-            "name": "(gdb) Launch",
-            "type": "cppdbg",
-            "request": "launch",
-            "program": "${command:cmake.launchTargetPath}",
-            "args": ["-r", "-pcd", "/home/ton068/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_rpy/pcd", "-gt_pose", "/home/ton068/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_rpy/associate_gt.txt"],
-            "stopAtEntry": true,
-            "cwd": "${fileDirname}",
-            "environment": [{"name": "DISPLAY", "value": "localhost:10.0"}],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "setupCommands": [
-                {
-                    "description": "Enable pretty-printing for gdb",
-                    "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
-                },
-                {
-                    "description": "Set Disassembly Flavor to Intel",
-                    "text": "-gdb-set disassembly-flavor intel",
-                    "ignoreFailures": true
-                }
-            ]
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
         },
         {
-          "name": "(gdb) Launch zivid",
-          "type": "cppdbg",
-          "request": "launch",
-          "program": "${command:cmake.launchTargetPath}",
-          "args": [
-            "-r",
-            "-pcd",
-            "/mnt/d61-jca20-recon/source/Noise_model/Ganesh0_conv/pcd",
-          ],
-          "stopAtEntry": true,
-          "cwd": "${fileDirname}",
-          "environment": [{ "name": "DISPLAY", "value": "localhost:14.0" }],
-          "externalConsole": false,
-          "MIMode": "gdb",
-          "setupCommands": [
-            {
-              "description": "Enable pretty-printing for gdb",
-              "text": "-enable-pretty-printing",
-              "ignoreFailures": true
-            },
-            {
-              "description": "Set Disassembly Flavor to Intel",
-              "text": "-gdb-set disassembly-flavor intel",
-              "ignoreFailures": true
-            }
-          ]
+          "description": "Set Disassembly Flavor to Intel",
+          "text": "-gdb-set disassembly-flavor intel",
+          "ignoreFailures": true
         }
-
-    ]
+      ]
+    }
+  ]
 }

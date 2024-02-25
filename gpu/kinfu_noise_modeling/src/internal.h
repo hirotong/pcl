@@ -58,9 +58,9 @@ constexpr int DIVISOR_2 = 255; // UCHAR_MAX;
 constexpr float PI = 3.14159265358979323846f;
 
 // Should be multiple of 32
-constexpr int VOLUME_X = 512;
-constexpr int VOLUME_Y = 512;
-constexpr int VOLUME_Z = 512;
+constexpr int VOLUME_X = 1024; //512;
+constexpr int VOLUME_Y = 1024;//512;
+constexpr int VOLUME_Z = 1024; //512;
 
 constexpr float VOLUME_SIZE = 3.0f; // in meters
 

@@ -56,8 +56,8 @@
 #define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
 
 // Focal lengths of depth (i.e. NIR) camera
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 585.f
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 585.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_X 525.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_Y 525.f
 
 // zivid camera parameters, from Fahira's code
 #define KINFU_ZIVID_RGB_FOCAL_X 1779.87915039062

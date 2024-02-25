@@ -55,7 +55,7 @@ public:
   /** \brief Default size for triangles buffer */
   enum {
     POINTS_PER_TRIANGLE = 3,
-    DEFAULT_TRIANGLES_BUFFER_SIZE = 2 * 1000 * 1000 * POINTS_PER_TRIANGLE
+    DEFAULT_TRIANGLES_BUFFER_SIZE = 20 * 1000 * 1000 * POINTS_PER_TRIANGLE
   };
 
   /** \brief Point type. */
