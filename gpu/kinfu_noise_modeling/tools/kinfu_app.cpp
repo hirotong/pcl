@@ -1127,7 +1127,7 @@ struct KinFuApp {
           std::cout << "Frame index: " << frame_idx++ << "\n";
           skip_count = 0;
         }
-        else{
+        else {
           skip_count++;
         }
         try {
@@ -1569,10 +1569,11 @@ main(int argc, char* argv[])
   app.writeCloud(1);
 
   pcl_fs::copy_file("mesh.ply",
-                    kinfu_dir + "/mesh_nc" + std::to_string(noise_components) + ".ply", pcl_fs::copy_options::overwrite_existing);
+                    kinfu_dir + "/mesh_nc" + std::to_string(noise_components) + ".ply",
+                    pcl_fs::copy_options::overwrite_existing);
   pcl_fs::copy_file("cloud_bin.pcd",
-                    kinfu_dir + "/cloud_nc" + std::to_string(noise_components) +
-                        ".pcd", pcl_fs::copy_options::overwrite_existing);
+                    kinfu_dir + "/cloud_nc" + std::to_string(noise_components) + ".pcd",
+                    pcl_fs::copy_options::overwrite_existing);
 
 #ifdef HAVE_OPENCV
   for (std::size_t t = 0; t < app.image_view_.views_.size(); ++t) {

@@ -44,7 +44,6 @@
 #include <pcl/gpu/kinfu/kinfu.h>
 #include <pcl/gpu/kinfu/marching_cubes.h>
 #include <pcl/gpu/kinfu/raycaster.h>
-#include <pcl/io/image_grabber.h>
 #include <pcl/io/oni_grabber.h>
 #include <pcl/io/openni_grabber.h>
 #include <pcl/io/pcd_grabber.h>
@@ -53,7 +52,7 @@
 #include <pcl/io/vtk_io.h>
 #include <pcl/visualization/image_viewer.h>
 #include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/visualization/point_cloud_color_handlers.h>
+#include <pcl/visualization/point_cloud_handlers.h>
 #include <pcl/exceptions.h>
 #include <pcl/memory.h>
 #include <pcl/point_cloud.h>
@@ -62,6 +61,7 @@
 #include "camera_pose.h"
 #include "evaluation.h"
 #include "openni_capture.h"
+#include "pcl/gpu/kinfu/kinfu.h"
 #include "tsdf_volume.h"
 #include "tsdf_volume.hpp"
 
@@ -70,11 +70,15 @@
 #include <vector>
 
 #ifdef HAVE_OPENCV
+#include <pcl/gpu/utils/timers_opencv.hpp>
+
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 // #include "video_recorder.h"
-#endif
+using ScopeTimeT = pcl::gpu::ScopeTimerCV;
+#else
 using ScopeTimeT = pcl::ScopeTime;
+#endif
 
 #include "../src/internal.h"
 
@@ -84,23 +88,23 @@ using namespace Eigen;
 using namespace std::chrono_literals;
 namespace pc = pcl::console;
 
-Eigen::Affine3f*
+Eigen::Affine3f
 params_to_matrix(std::vector<float> params)
 {
-  Eigen::Affine3f* pose = new Eigen::Affine3f(Eigen::Affine3f::Identity());
+  Eigen::Affine3f pose = Eigen::Affine3f::Identity();
   Eigen::Quaternionf kq(params[6], params[3], params[4], params[5]);
   Eigen::Vector3f kt(params[0], params[1], params[2]);
 
-  pose->translate(kt);
-  pose->rotate(kq);
+  pose.translate(kt);
+  pose.rotate(kq);
 
   return pose;
 }
 
-std::vector<Eigen::Affine3f*>
+std::vector<Eigen::Affine3f>
 read_transformation_from_file(const std::string& filename)
 {
-  std::vector<Eigen::Affine3f*> poses;
+  std::vector<Eigen::Affine3f> poses;
   std::ifstream pose_file(filename);
 
   if (!pose_file.is_open()) {
@@ -115,6 +119,7 @@ read_transformation_from_file(const std::string& filename)
     std::vector<float> params;
     std::istringstream ss(line);
     std::string double_the_entry;
+    ss >> double_the_entry; // skip the first entry timestamp
     while (ss >> double_the_entry) {
       params.push_back(std::stof(double_the_entry));
     }
@@ -135,6 +140,8 @@ void
 mergePointNormal(const DeviceArray<PointXYZ>& cloud,
                  const DeviceArray<Normal>& normals,
                  DeviceArray<PointNormal>& output);
+Eigen::Vector3f
+rodrigues2(const Eigen::Matrix3f& matrix);
 } // namespace gpu
 
 namespace visualization {
@@ -365,9 +372,9 @@ struct CurrentFrameCloudView {
     cloud_viewer_.setBackgroundColor(0, 0, 0.15);
     cloud_viewer_.setPointCloudRenderingProperties(
         visualization::PCL_VISUALIZER_POINT_SIZE, 1);
-    cloud_viewer_.addCoordinateSystem(1.0, "global");
+    cloud_viewer_.addCoordinateSystem(1.0);
     cloud_viewer_.initCameraParameters();
-    cloud_viewer_.setPosition(0, 500);
+    cloud_viewer_.setPosition(0, 600);
     cloud_viewer_.setSize(640, 480);
     cloud_viewer_.setCameraClipDistances(0.01, 10.01);
   }
@@ -452,7 +459,7 @@ struct ImageView {
       views_.push_back(cv::Mat());
       cv::cvtColor(cv::Mat(480, 640, CV_8UC3, (void*)&view_host_[0]),
                    views_.back(),
-                   cv::COLOR_BGR2GRAY);
+                   CV_RGB2GRAY);
       // cv::copy(cv::Mat(480, 640, CV_8UC3, (void*)&view_host_[0]), views_.back());
     }
 #endif
@@ -538,9 +545,9 @@ struct SceneCloudView {
           new pcl::visualization::PCLVisualizer("Scene Cloud Viewer"));
 
       cloud_viewer_->setBackgroundColor(0, 0, 0);
-      cloud_viewer_->addCoordinateSystem(1.0, "global");
+      cloud_viewer_->addCoordinateSystem(1.0);
       cloud_viewer_->initCameraParameters();
-      cloud_viewer_->setPosition(0, 500);
+      cloud_viewer_->setPosition(0, 600);
       cloud_viewer_->setSize(640, 480);
       cloud_viewer_->setCameraClipDistances(0.01, 10.01);
 
@@ -727,8 +734,10 @@ struct KinFuApp {
            float vsz,
            int icp,
            int viz,
-           CameraPoseProcessor::Ptr pose_processor = CameraPoseProcessor::Ptr(),
-           std::vector<Eigen::Affine3f*> hints = {})
+           float z0 = 0.f,
+           float fl = 525.f,
+           int noise_components = 0,
+           CameraPoseProcessor::Ptr pose_processor = CameraPoseProcessor::Ptr())
   : exit_(false)
   , scan_(false)
   , scan_mesh_(false)
@@ -737,7 +746,6 @@ struct KinFuApp {
   , registration_(false)
   , integrate_colors_(false)
   , pcd_source_(false)
-  , eval_(false)
   , focal_length_(-1.f)
   , capture_(source)
   , scene_cloud_view_(viz)
@@ -745,8 +753,8 @@ struct KinFuApp {
   , time_s_(0)
   , icp_(icp)
   , viz_(viz)
+  , pose_(nullptr)
   , pose_processor_(pose_processor)
-  , hints_(hints)
   {
     // Init Kinfu Tracker
     Eigen::Vector3f volume_size = Vector3f::Constant(vsz /*meters*/);
@@ -755,16 +763,14 @@ struct KinFuApp {
     Eigen::Matrix3f R =
         Eigen::Matrix3f::Identity(); // * AngleAxisf( pcl::deg2rad(-30.f),
                                      // Vector3f::UnitX());
-    // Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2
+    // Eigen::Vector3f t = volume_size * 0.5f - Vector3f (0, 0, volume_size (2) / 2
     // * 1.2f);
-    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2);
+    // set the volume centre at distance z0 away from Kinect
+    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, z0);
 
-    Eigen::Affine3f pose;
-    if (hints_.empty())
-      pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
-    else
-      pose = *hints[0];
+    Eigen::Affine3f pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
 
+    kinfu_.setNoiseComponents(noise_components);
     kinfu_.setInitalCameraPose(pose);
     kinfu_.volume().setTsdfTruncDist(0.030f /*meters*/);
     kinfu_.setIcpCorespFilteringParams(0.1f /*meters*/, sin(pcl::deg2rad(20.f)));
@@ -889,6 +895,7 @@ struct KinFuApp {
   void
   execute(const PtrStepSz<const unsigned short>& depth,
           const PtrStepSz<const KinfuTracker::PixelRGB>& rgb24,
+          const Eigen::Affine3f* pose,
           bool has_data)
   {
     bool has_image = false;
@@ -904,12 +911,12 @@ struct KinFuApp {
 
         // run kinfu algorithm
         if (integrate_colors_)
-          has_image = kinfu_(depth_device_, image_view_.colors_device_, hints_);
+          has_image = kinfu_(depth_device_, image_view_.colors_device_, pose);
         else
-          has_image = kinfu_(depth_device_, hints_);
+          has_image = kinfu_(depth_device_, pose);
       }
 
-      // process camera pose
+      // // process camera pose
       if (pose_processor_) {
         pose_processor_->processPose(kinfu_.getCameraPose());
       }
@@ -1129,6 +1136,14 @@ struct KinFuApp {
           source_cb3(cloud);
         };
 
+    std::function<void(const Eigen::Affine3f&)> func4 =
+        [this](const Eigen::Affine3f& pose) {
+          std::unique_lock<std::mutex> lock(data_ready_mutex_, std::try_to_lock);
+          if (exit_ || !lock)
+            return;
+          this->pose_.reset(new Eigen::Affine3f(pose));
+        };
+
     bool need_colors = integrate_colors_ || registration_;
     if (pcd_source_ && !capture_.providesCallback<void(
                             const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)>()) {
@@ -1138,6 +1153,8 @@ struct KinFuApp {
     boost::signals2::connection c = pcd_source_   ? capture_.registerCallback(func3)
                                     : need_colors ? capture_.registerCallback(func1)
                                                   : capture_.registerCallback(func2);
+
+    boost::signals2::connection c_pose = capture_.registerCallback(func4);
 
     {
       std::unique_lock<std::mutex> lock(data_ready_mutex_);
@@ -1161,22 +1178,23 @@ struct KinFuApp {
           skip_count = 0;
         }
         else {
+          std::cout << "Skip one frame !!!" << std::endl;
           skip_count++;
         }
         try {
-          this->execute(depth_, rgb24_, has_data);
+          this->execute(depth_, rgb24_, pose_.get(), has_data);
         } catch (const std::bad_alloc& /*e*/) {
           std::cout << "Bad alloc" << std::endl;
           break;
-        } catch (const std::exception& e) {
-          std::cout << "Exception" << e.what() << std::endl;
+        } catch (const std::exception& /*e*/) {
+          std::cout << "Exception" << std::endl;
           break;
         }
 
         if (viz_)
           scene_cloud_view_.cloud_viewer_->spinOnce(3);
 
-        if (skip_count > 100)
+        if (skip_count > 10)
           break;
       }
 
@@ -1194,28 +1212,30 @@ struct KinFuApp {
 
     // Points to export are either in cloud_ptr_ or combined_ptr_.
     // If none have points, we have nothing to export.
-    if (view.cloud_ptr_->points.empty() && view.combined_ptr_->points.empty()) {
-      std::cout << "Not writing cloud: Cloud is empty" << std::endl;
+    // if (view.cloud_ptr_->points.empty () && view.combined_ptr_->points.empty ())
+    // {
+    //   std::cout << "Not writing cloud: Cloud is empty" << std::endl;
+    // }
+    // else
+    // {
+    if (view.point_colors_ptr_->points.empty()) // no colors
+    {
+      if (view.valid_combined_)
+        writeCloudFile(format, view.combined_ptr_);
+      else
+        writeCloudFile(format, view.cloud_ptr_);
     }
     else {
-      if (view.point_colors_ptr_->points.empty()) // no colors
-      {
-        if (view.valid_combined_)
-          writeCloudFile(format, view.combined_ptr_);
-        else
-          writeCloudFile(format, view.cloud_ptr_);
-      }
-      else {
-        if (view.valid_combined_)
-          writeCloudFile(
-              format,
-              merge<PointXYZRGBNormal>(*view.combined_ptr_, *view.point_colors_ptr_));
-        else
-          writeCloudFile(format,
-                         merge<PointXYZRGB>(*view.cloud_ptr_, *view.point_colors_ptr_));
-      }
+      if (view.valid_combined_)
+        writeCloudFile(
+            format,
+            merge<PointXYZRGBNormal>(*view.combined_ptr_, *view.point_colors_ptr_));
+      else
+        writeCloudFile(format,
+                       merge<PointXYZRGB>(*view.cloud_ptr_, *view.point_colors_ptr_));
     }
   }
+  // }
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   void
@@ -1260,7 +1280,6 @@ struct KinFuApp {
   bool registration_;
   bool integrate_colors_;
   bool pcd_source_;
-  bool eval_;
   float focal_length_;
 
   pcl::Grabber& capture_;
@@ -1287,8 +1306,10 @@ struct KinFuApp {
 
   double time_s_;
   int icp_, viz_;
+
+  std::shared_ptr<Eigen::Affine3f> pose_;
+
   CameraPoseProcessor::Ptr pose_processor_;
-  std::vector<Eigen::Affine3f*> hints_;
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   static void
@@ -1482,6 +1503,14 @@ main(int argc, char* argv[])
   bool triggered_capture = false;
   bool pcd_input = false;
 
+  std::string gt_pose_file, camera_pose_file;
+  std::vector<Eigen::Affine3f> poses;
+  if (pc::parse_argument(argc, argv, "-gt_pose", gt_pose_file)) {
+    // icp = -1;
+    poses = read_transformation_from_file(gt_pose_file);
+    std::cout << "hints:" << poses.size() << std::endl;
+  }
+
   std::string eval_folder, match_file, openni_device, oni_file, pcd_dir, base_dir,
       kinfu_dir;
   try {
@@ -1494,32 +1523,22 @@ main(int argc, char* argv[])
       capture.reset(new pcl::ONIGrabber(oni_file, repeat, false));
     }
     else if (pc::parse_argument(argc, argv, "-pcd", pcd_dir) > 0) {
-      base_dir = pcl_fs::path(pcd_dir).parent_path().string();
-      kinfu_dir = base_dir + "/kinfu";
-      if (!pcl_fs::exists(kinfu_dir)) {
-        pcl_fs::create_directory(kinfu_dir);
-      }
-      float fps_pcd = 15.0f;
+
+      float fps_pcd = 10.0f;
       pc::parse_argument(argc, argv, "-pcd_fps", fps_pcd);
 
       std::vector<std::string> pcd_files = getPcdFilesInDir(pcd_dir);
 
-      // Sort the read files by name
+      // Sort the read files by name and display in the order to be used by KinFu
       sort(pcd_files.begin(), pcd_files.end());
-      std::cout << pcd_files[0] << std::endl;
-      capture.reset(new pcl::PCDGrabber<pcl::PointXYZRGBA>(pcd_files, fps_pcd, false));
-      triggered_capture = true;
+      capture.reset(
+          new pcl::PCDGrabber<pcl::PointXYZRGBA>(pcd_files, poses, fps_pcd, false));
+      // triggered_capture = true;
       pcd_input = true;
     }
     else if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
       // init data source latter
-      float fps_eval = 100.0f;
       pc::parse_argument(argc, argv, "-match_file", match_file);
-      auto image_grabber = new pcl::ImageGrabber<pcl::PointXYZRGBA>(
-          eval_folder + "depth", eval_folder + "rgb", fps_eval, false);
-      image_grabber->setCameraIntrinsics(525.f, 525.f, 319.5f, 239.5f);
-      capture.reset(image_grabber);
-      pcd_input = true;
     }
     else {
       capture.reset(new pcl::OpenNIGrabber());
@@ -1547,26 +1566,38 @@ main(int argc, char* argv[])
   pc::parse_argument(argc, argv, "--icp", icp);
   pc::parse_argument(argc, argv, "--viz", visualization);
 
-  std::string gt_pose_file, camera_pose_file;
-  std::vector<Eigen::Affine3f*> hints;
-  if (pc::parse_argument(argc, argv, "-gt_pose", gt_pose_file)) {
-    // icp = 0;
-    hints = read_transformation_from_file(gt_pose_file);
-    std::cout << "hints:" << hints.size() << std::endl;
-  }
+  float z0 = volume_size / 2.f;
+  pc::parse_argument(argc, argv, "-z0", z0);
+
+  float fl = 525.f;
+  pc::parse_argument(argc, argv, "-fl", fl);
+
+  int noise_components = 0;
+  pc::parse_argument(argc, argv, "-nc", noise_components);
+
+  base_dir = pcl_fs::path(pcd_dir).parent_path().string();
 
   CameraPoseProcessor::Ptr pose_processor;
   if (pc::parse_argument(argc, argv, "-save_pose", camera_pose_file) &&
       !camera_pose_file.empty()) {
     pose_processor.reset(new CameraPoseWriter(camera_pose_file));
   }
-
-  KinFuApp app(*capture, volume_size, icp, visualization, pose_processor, hints);
-
-  if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0) {
-    app.eval_ = true;
-    app.toggleEvaluationMode(eval_folder, match_file);
+  else {
+    camera_pose_file = base_dir + "/kinfu_camera_poses.txt";
+    pose_processor.reset(new CameraPoseWriter(camera_pose_file));
   }
+  std::cout << "saving pose to " << camera_pose_file << std::endl;
+  KinFuApp app(*capture,
+               volume_size,
+               icp,
+               visualization,
+               z0,
+               fl,
+               noise_components,
+               pose_processor);
+
+  if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0)
+    app.toggleEvaluationMode(eval_folder, match_file);
 
   if (pc::find_switch(argc, argv, "--current-cloud") ||
       pc::find_switch(argc, argv, "-cc"))
@@ -1579,13 +1610,14 @@ main(int argc, char* argv[])
       pc::find_switch(argc, argv, "-r")) {
     if (pcd_input) {
       app.pcd_source_ = true;
-      app.registration_ = true; // since pcd provides registered rgbd
+      app.registration_ = true;
     }
     else {
       app.registration_ = true;
       app.initRegistration();
     }
   }
+
   if (pc::find_switch(argc, argv, "--integrate-colors") ||
       pc::find_switch(argc, argv, "-ic"))
     app.toggleColorIntegration();
@@ -1615,6 +1647,33 @@ main(int argc, char* argv[])
     std::cout << "Exception" << std::endl;
   }
 
+  // save mesh and point cloud when quit the program.
+  app.scene_cloud_view_.show(app.kinfu_, app.integrate_colors_);
+  app.scene_cloud_view_.showMesh(app.kinfu_, app.integrate_colors_);
+  app.writeMesh(7);
+  app.writeCloud(1);
+
+  if (poses.empty()) {
+    kinfu_dir = base_dir + "/kinfu";
+  }
+  else {
+    kinfu_dir = base_dir + "/kinfu_gtpose";
+  }
+  if (!pcl_fs::exists(kinfu_dir)) {
+    pcl_fs::create_directory(kinfu_dir);
+  }
+
+  std::string dst_mesh_path =
+      kinfu_dir + "/mesh_nc" + std::to_string(noise_components) + "_vsz_" +
+      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + ".ply";
+  std::string dst_pcd_path =
+      kinfu_dir + "/cloud_nc" + std::to_string(noise_components) + "_vsz_" +
+      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + ".pcd";
+  pcl_fs::copy_file(
+      "mesh.ply", dst_mesh_path, pcl_fs::copy_options::overwrite_existing);
+  pcl_fs::copy_file(
+      "cloud_bin.pcd", dst_pcd_path, pcl_fs::copy_options::overwrite_existing);
+
 #ifdef HAVE_OPENCV
   for (std::size_t t = 0; t < app.image_view_.views_.size(); ++t) {
     if (t == 0) {
@@ -1627,6 +1686,26 @@ main(int argc, char* argv[])
     sprintf(buf, "./%06d.png", (int)t);
     cv::imwrite(buf, app.image_view_.views_[t]);
     printf("writing: %s\n", buf);
+    // save estimated camera pose
+    Eigen::Affine3f aff = app.kinfu_.getCameraPose(t);
+    ofstream poseFile;
+    sprintf(buf, "./%06d.txt", (int)t);
+    poseFile.open(buf);
+    if (poseFile.is_open()) {
+      cout << "writing pose to " << buf << endl;
+      poseFile << "TVector" << endl
+               << aff.translation() << endl
+               << endl
+               << "RMatrix" << endl
+               << aff.linear() << endl
+               << endl;
+      // poseFile << "TVector" << endl << aff.translation () << endl << endl <<
+      // "RVector" <<endl << rodrigues2(aff.linear ())  <<endl << endl;
+      poseFile.close();
+    }
+    else {
+      cout << "unable to open " << buf << endl;
+    }
   }
 #endif
 

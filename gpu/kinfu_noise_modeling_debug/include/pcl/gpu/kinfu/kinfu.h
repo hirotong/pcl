@@ -51,7 +51,7 @@
 
 #include <vector>
 
-// #define KINECT_CAMERA
+#define KINECT_CAMERA
 
 #ifdef KINECT_CAMERA
 // Focal lengths of RGB camera
@@ -167,9 +167,8 @@ public:
    * \param hint
    * \return true if can render 3D view.
    */
-  // FIXME: The hint may need to be removed.
   bool
-  operator()(const DepthMap& depth);
+  operator()(const DepthMap& depth, const Eigen::Affine3f* pose = nullptr);
 
   /** \brief Processes next frame (both depth and color integration). Please call
    * initColorIntegration before invpoking this. \param[in] depth next depth frame with
@@ -177,7 +176,7 @@ public:
    * 3D view.
    */
   bool
-  operator()(const DepthMap& depth, const View& colors);
+  operator()(const DepthMap& depth, const View& colors, const Eigen::Affine3f* pose = nullptr);
 
   /** \brief Returns camera pose at given time, default the last pose
    * \param[in] time Index of frame for which camera pose is returned.
@@ -307,6 +306,9 @@ private:
 
   /** \brief Array of camera translations for each moment of time. */
   std::vector<Vector3f> tvecs_;
+
+  /** \breif the transformation from ground truth trajactory to init cam pose*/
+  Eigen::Affine3f delta_pose_;
 
   /** \brief Camera movement threshold. TSDF is integrated iff a camera movement metric
    * exceeds some value. */

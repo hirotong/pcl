@@ -86,6 +86,7 @@
         "any": "cpp",
         "coroutine": "cpp",
         "forward_list": "cpp",
-        "source_location": "cpp"
+        "source_location": "cpp",
+        "filesystem": "cpp"
     }
 }

@@ -12,7 +12,11 @@
       "args": [
         "-r",
         "-pcd",
-        "/home/ton068/d61-jca-recon/work/Jinguang/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/pcd"
+        "/home/ton068/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/pcd",
+        "-gt_pose",
+        "/home/ton068/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/associate_gt.txt",
+        "-nc",
+        "1"
       ],
       "stopAtEntry": true,
       "cwd": "${fileDirname}",

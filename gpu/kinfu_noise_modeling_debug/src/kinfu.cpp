@@ -249,9 +249,104 @@ pcl::gpu::KinfuTracker::allocateBufffers(int rows, int cols)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool
-pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw)
+pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw,
+                                   const Eigen::Affine3f* pose)
 {
   device::Intr intr(fx_, fy_, cx_, cy_);
+
+  if (pose != nullptr) {
+    // still do thesee to keep the same as the original kinfu
+    {
+      // ScopeTime time(">>> Bilateral, pyr-down-all, create-maps-all");
+      // depth_raw.copyTo(depths_curr[0]);
+      device::bilateralFilter(depth_raw, depths_curr_[0]);
+
+      if (max_icp_distance_ > 0)
+        device::truncateDepth(depths_curr_[0], max_icp_distance_);
+
+      for (int i = 1; i < LEVELS; ++i)
+        device::pyrDown(depths_curr_[i - 1], depths_curr_[i]);
+
+      for (int i = 0; i < LEVELS; ++i) {
+        device::createVMap(intr(i), depths_curr_[i], vmaps_curr_[i]);
+        // device::createNMap(vmaps_curr_[i], nmaps_curr_[i]);
+        computeNormalsEigen(vmaps_curr_[i], nmaps_curr_[i]);
+      }
+      pcl::device::sync();
+    }
+    disable_icp_ = true;
+    bool integrate = false;
+    Matrix3frm Rcurr;
+    Vector3f tcurr;
+    if (global_time_ == 0) {
+      Rcurr = init_Rcam_;
+      tcurr = init_tcam_;
+      Eigen::Affine3f init_pose = Eigen::Affine3f::Identity();
+      init_pose.rotate(Rcurr);
+      init_pose.translate(tcurr);
+      delta_pose_ = init_pose * (*pose).inverse();
+      integrate = true;
+    }
+    else {
+      // pose_prev.translate(Tprev);
+      Eigen::Affine3f pose_curr = delta_pose_ * (*pose);
+      Rcurr = pose_curr.rotation();
+      tcurr = pose_curr.translation();
+
+      rmats_.push_back(Rcurr);
+      tvecs_.push_back(tcurr);
+      // pose_prev.rotate(Rprev);
+      Matrix3frm Rprev = rmats_[global_time_ - 1]; //  [Ri|ti] - pos of camera, i.e.
+      Vector3f Tprev = tvecs_[global_time_ - 1];   //  (i-1)th camera pose
+
+      float rnorm = rodrigues2(Rcurr.inverse() * Rprev).norm();
+      float tnorm = (tcurr - Tprev).norm();
+      const float alpha = 1.f;
+      integrate = (rnorm + alpha * tnorm) / 2 >= integration_metric_threshold_;
+    }
+    // Volume integration
+    float3 device_volume_size = device_cast<const float3>(tsdf_volume_->getSize());
+
+    Matrix3frm Rcurr_inv = Rcurr.inverse();
+    Mat33& device_Rcurr_inv = device_cast<Mat33>(Rcurr_inv);
+    float3& device_tcurr = device_cast<float3>(tcurr);
+
+    if (integrate) {
+      integrateWeightedTsdfVolume(depth_raw,
+                                  nmaps_curr_[0],
+                                  intr,
+                                  device_volume_size,
+                                  device_Rcurr_inv,
+                                  device_tcurr,
+                                  tsdf_volume_->getTsdfTruncDist(),
+                                  tsdf_volume_->data(),
+                                  depthRawScaled_,
+                                  noise_components_);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////////////
+    // Ray casting
+    Mat33& device_Rcurr = device_cast<Mat33>(Rcurr);
+    {
+      // ScopeTime time("ray-cast-all");
+      raycast(intr,
+              device_Rcurr,
+              device_tcurr,
+              tsdf_volume_->getTsdfTruncDist(),
+              device_volume_size,
+              tsdf_volume_->data(),
+              vmaps_g_prev_[0],
+              nmaps_g_prev_[0]);
+      for (int i = 1; i < LEVELS; ++i) {
+        resizeVMap(vmaps_g_prev_[i - 1], vmaps_g_prev_[i]);
+        resizeNMap(nmaps_g_prev_[i - 1], nmaps_g_prev_[i]);
+      }
+      pcl::device::sync();
+    }
+
+    ++global_time_;
+    return (true);
+  }
 
   if (!disable_icp_) {
     {
@@ -322,9 +417,8 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw)
     ///////////////////////////////////////////////////////////////////////////////////////////
     // Iterative Closest Point
     Matrix3frm Rprev = rmats_[global_time_ - 1]; //  [Ri|ti] - pos of camera, i.e.
-    Vector3f tprev =
-        tvecs_[global_time_ -
-               1]; //  tranfrom from camera to global coo space for (i-1)th camera pose
+    //  tranfrom from camera to global coo space for (i-1)th camera pose
+    Vector3f tprev = tvecs_[global_time_ - 1];
     Matrix3frm Rprev_inv = Rprev.inverse(); // Rprev.t();
 
     // Mat33&  device_Rprev     = device_cast<Mat33> (Rprev);
@@ -473,8 +567,6 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw)
                                 tsdf_volume_->data(),
                                 depthRawScaled_,
                                 noise_components_);
-
-    // TODO: integrateWeightedTSDFVolume();
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////////
@@ -604,9 +696,11 @@ pcl::gpu::KinfuTracker::initColorIntegration(int max_weight)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool
-pcl::gpu::KinfuTracker::operator()(const DepthMap& depth, const View& colors)
+pcl::gpu::KinfuTracker::operator()(const DepthMap& depth,
+                                   const View& colors,
+                                   const Eigen::Affine3f* pose)
 {
-  bool res = (*this)(depth);
+  bool res = (*this)(depth, pose);
 
   if (res && color_volume_) {
     const float3 device_volume_size =
