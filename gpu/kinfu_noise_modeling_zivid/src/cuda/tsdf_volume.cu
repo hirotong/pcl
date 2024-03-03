@@ -570,7 +570,7 @@ tsdf23_all_noise(const PtrStepSz<float> depthScaled,
           nvect.y = nmap.ptr(jj + rows)[ii];
           nvect.z = nmap.ptr(jj + 2 * rows)[ii];
           const float theta = acosf(fabsf(nvect.z));
-          if (theta > PI / 2.5f) // ignore normal angle larger than 72 degrees  # TODO: can change this value
+          if (theta > PI / 2.5f) // ignore normal angle larger than 72 degrees
             continue;
           const float sigmaL = 0.8f + 0.035f * theta / (PI / 2.0f - theta);
           const float sigmaz = 0.0012f +

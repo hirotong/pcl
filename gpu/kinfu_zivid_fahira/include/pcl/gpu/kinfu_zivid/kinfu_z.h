@@ -1,3 +1,4 @@
+// vanila kinfu
 /*
  * Software License Agreement (BSD License)
  *
@@ -37,57 +38,37 @@
 
 #pragma once
 
-#include <pcl/gpu/containers/device_array.h>
-#include <pcl/gpu/kinfu/color_volume.h>
-#include <pcl/gpu/kinfu/pixel_rgb.h>
-#include <pcl/gpu/kinfu/raycaster.h>
-#include <pcl/gpu/kinfu/tsdf_volume.h>
 #include <pcl/memory.h>
 #include <pcl/pcl_macros.h>
-#include <pcl/point_cloud.h>
+#include <pcl/gpu/containers/device_array.h>
+#include <pcl/gpu/kinfu_zivid/pixel_rgb.h>
+#include <pcl/gpu/kinfu_zivid/tsdf_volume.h>
+#include <pcl/gpu/kinfu_zivid/color_volume.h>
+#include <pcl/gpu/kinfu_zivid/raycaster.h>
 #include <pcl/point_types.h>
-
+#include <pcl/point_cloud.h>
 #include <Eigen/Core>
-
 #include <vector>
+#include <pcl/gpu/kinfu_zivid/zivid_related.h>
+#include <fstream>
 
-#define KINECT_CAMERA
-
-#ifdef KINECT_CAMERA
 // Focal lengths of RGB camera
-#define KINFU_DEFAULT_RGB_FOCAL_X 525.f
-#define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
+#define KINFU_DEFAULT_RGB_FOCAL_X f_x1
+#define KINFU_DEFAULT_RGB_FOCAL_Y f_y1
 
 // Focal lengths of depth (i.e. NIR) camera
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 525.f
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 525.f
+#define KINFU_DEFAULT_DEPTH_FOCAL_X depth_focal_x
+#define KINFU_DEFAULT_DEPTH_FOCAL_Y depth_focal_y
 
-#define KINFU_DEFAULT_IMAGE_WIDTH 640
-#define KINFU_DEFAULT_IMAGE_HEIGHT 480
-
-#define KINFU_DEFAULT_CAMERA_CX -1
-#define KINFU_DEFAULT_CAMERA_CY -1
-
-#else
-// zivid camera parameters, from Fahira's code
-#define KINFU_DEFAULT_RGB_FOCAL_X 1779.87915039062
-#define KINFU_DEFAULT_RGB_FOCAL_Y 1780.30529785156
-
-#define KINFU_DEFAULT_DEPTH_FOCAL_X 1779.87915039062
-#define KINFU_DEFAULT_DEPTH_FOCAL_Y 1779.87915039062
-
-#define KINFU_DEFAULT_IMAGE_WIDTH 1944
-#define KINFU_DEFAULT_IMAGE_HEIGHT 1200
-
-#define KINFU_DEFAULT_CAMERA_CX 959.119079589844
-#define KINFU_DEFAULT_CAMERA_CY 573.3330078125
-
-#endif
+void write_transform_to_text(
+    Eigen::Matrix<float, 3, 3, Eigen::RowMajor> transformation_matrix,
+    Eigen::Vector3f ts);
 
 namespace pcl {
 namespace gpu {
-/** \brief KinfuTracker class encapsulates implementation of Microsoft Kinect Fusion
- * algorithm \author Anatoly Baskeheev, Itseez Ltd, (myname.mysurname@mycompany.com)
+/** \brief KinfuTracker class encapsulates implementation of Microsoft Kinect
+ * Fusion algorithm
+ * \author Anatoly Baskeheev, Itseez Ltd, (myname.mysurname@mycompany.com)
  */
 class PCL_EXPORTS KinfuTracker {
 public:
@@ -104,7 +85,7 @@ public:
    * \param[in] rows height of depth image
    * \param[in] cols width of depth image
    */
-  KinfuTracker(int rows = KINFU_DEFAULT_IMAGE_HEIGHT, int cols = KINFU_DEFAULT_IMAGE_WIDTH, int noise_components = 0);
+  KinfuTracker(int rows = Height1, int cols = Width1, int noise_components = 0);
 
   /** \brief Sets Depth camera intrinsics
    * \param[in] fx focal length x
@@ -112,8 +93,7 @@ public:
    * \param[in] cx principal point x
    * \param[in] cy principal point y
    */
-  void
-  setDepthIntrinsics(float fx, float fy, float cx = -1, float cy = -1);
+  void setDepthIntrinsics(float fx, float fy, float cx = -1, float cy = -1);
 
   /** \brief Get Depth camera intrinsics
    * \param[out] fx focal length x
@@ -121,125 +101,111 @@ public:
    * \param[out] cx principal point x
    * \param[out] cy principal point y
    */
-  void
-  getDepthIntrinsics(float& fx, float& fy, float& cx, float& cy) const;
+  void getDepthIntrinsics(float &fx, float &fy, float &cx, float &cy) const;
 
   /** \brief Sets initial camera pose relative to volume coordinate space
    * \param[in] pose Initial camera pose
    */
-  void
-  setInitalCameraPose(const Eigen::Affine3f& pose);
+  void setInitalCameraPose(const Eigen::Affine3f &pose);
 
-  /** \brief Sets truncation threshold for depth image for ICP step only! This helps
-   *  to filter measurements that are outside tsdf volume. Pass zero to disable the
-   * truncation. \param[in] max_icp_distance Maximal distance, higher values are reset
-   * to zero (means no measurement).
+  /** \brief Sets truncation threshold for depth image for ICP step only! This
+   * helps
+   *  to filter measurements that are outside tsdf volume. Pass zero to disable
+   * the truncation.
+   * \param[in] max_icp_distance Maximal distance, higher values are reset to
+   * zero (means no measurement).
    */
-  void
-  setDepthTruncationForICP(float max_icp_distance = 0.f);
+  void setDepthTruncationForICP(float max_icp_distance = 0.f);
 
   /** \brief Sets ICP filtering parameters.
    * \param[in] distThreshold distance.
    * \param[in] sineOfAngle sine of angle between normals.
    */
-  void
-  setIcpCorespFilteringParams(float distThreshold, float sineOfAngle);
+  void setIcpCorespFilteringParams(float distThreshold, float sineOfAngle);
 
-  /** \brief Sets integration threshold. TSDF volume is integrated iff a camera movement
-   * metric exceeds the threshold value. The metric represents the following: M =
-   * (rodrigues(Rotation).norm() + alpha*translation.norm())/2, where alpha = 1.f
-   * (hardcoded constant) \param[in] threshold a value to compare with the metric.
-   * Suitable values are ~0.001
+  /** \brief Sets integration threshold. TSDF volume is integrated iff a camera
+   * movement metric exceeds the threshold value.
+   * The metric represents the following: M = (rodrigues(Rotation).norm() +
+   * alpha*translation.norm())/2, where alpha = 1.f (hardcoded constant)
+   * \param[in] threshold a value to compare with the metric. Suitable values
+   * are ~0.001
    */
-  void
-  setCameraMovementThreshold(float threshold = 0.001f);
+  void setCameraMovementThreshold(float threshold = 0.001f);
 
   /** \brief Performs initialization for number of noise components to be
-   * accounted for. \param[in] noise_components = 0 for no noise consideration, 1
-   * for axial noise consideration, 2 for axial and lateral noise consideration.
+   * accounted for.
+   * \param[in] noise_components = 0 for no noise consideration, 1 for axial
+   * noise consideration, 2 for axial and lateral noise consideration.
    */
-  void
-  setNoiseComponents(int noise_components);
+  void setNoiseComponents(int noise_components);
+  void setFrameCounter(int frame_count);
 
-  /** \brief Performs initialization for color integration. Must be called before
-   * calling color integration. \param[in] max_weight max weighe for color integration.
-   * -1 means default weight.
+  /** \brief Performs initialization for color integration. Must be called
+   * before calling color integration.
+   * \param[in] max_weight max weighe for color integration. -1 means default
+   * weight.
    */
-  void
-  initColorIntegration(int max_weight = -1);
+  void initColorIntegration(int max_weight = -1);
 
   /** \brief Returns cols passed to ctor */
-  int
-  cols();
+  int cols();
 
   /** \brief Returns rows passed to ctor */
-  int
-  rows();
+  int rows();
 
   /** \brief Processes next frame.
    * \param[in] depth next frame with values in millimeters
    * \param hint
    * \return true if can render 3D view.
    */
-  bool
-  operator()(const DepthMap& depth, const Eigen::Affine3f* pose = nullptr);
+  bool operator()(const DepthMap &depth, Eigen::Affine3f *hint = nullptr);
 
-  /** \brief Processes next frame (both depth and color integration). Please call
-   * initColorIntegration before invpoking this. \param[in] depth next depth frame with
-   * values in millimeters \param[in] colors next RGB frame \return true if can render
-   * 3D view.
+  /** \brief Processes next frame (both depth and color integration). Please
+   * call initColorIntegration before invpoking this.
+   * \param[in] depth next depth frame with values in millimeters
+   * \param[in] colors next RGB frame
+   * \return true if can render 3D view.
    */
-  bool
-  operator()(const DepthMap& depth, const View& colors, const Eigen::Affine3f* pose = nullptr);
+  bool operator()(const DepthMap &depth, const View &colors);
 
   /** \brief Returns camera pose at given time, default the last pose
    * \param[in] time Index of frame for which camera pose is returned.
    * \return camera pose
    */
-  Eigen::Affine3f
-  getCameraPose(int time = -1) const;
+  Eigen::Affine3f getCameraPose(int time = -1) const;
 
   /** \brief Returns number of poses including initial */
-  std::size_t
-  getNumberOfPoses() const;
+  std::size_t getNumberOfPoses() const;
 
   /** \brief Returns TSDF volume storage */
-  const TsdfVolume&
-  volume() const;
+  const TsdfVolume &volume() const;
 
   /** \brief Returns TSDF volume storage */
-  TsdfVolume&
-  volume();
+  TsdfVolume &volume();
 
   /** \brief Returns color volume storage */
-  const ColorVolume&
-  colorVolume() const;
+  const ColorVolume &colorVolume() const;
 
   /** \brief Returns color volume storage */
-  ColorVolume&
-  colorVolume();
+  ColorVolume &colorVolume();
 
   /** \brief Renders 3D scene to display to human
    * \param[out] view output array with image
    */
-  void
-  getImage(View& view) const;
+  void getImage(View &view) const;
 
   /** \brief Returns point cloud abserved from last camera pose
    * \param[out] cloud output array for points
    */
-  void
-  getLastFrameCloud(DeviceArray2D<PointType>& cloud) const;
+  void getLastFrameCloud(DeviceArray2D<PointType> &cloud) const;
 
   /** \brief Returns point cloud abserved from last camera pose
    * \param[out] normals output array for normals
    */
-  void
-  getLastFrameNormals(DeviceArray2D<NormalType>& normals) const;
+  void getLastFrameNormals(DeviceArray2D<NormalType> &normals) const;
 
   /** \brief Disables ICP forever */
-  void
-  disableIcp();
+  void disableIcp();
 
 private:
   /** \brief Number of pyramid levels */
@@ -260,8 +226,10 @@ private:
   int cols_;
   /** \brief Frame counter */
   int global_time_;
-  /** number of noise component to be considered for depth fusion. */
+
   int noise_components_;
+  int frame_count_ = 0;
+  int resets_count = 0;
 
   /** \brief Truncation threshold for depth image for ICP step */
   float max_icp_distance_;
@@ -283,28 +251,35 @@ private:
   int icp_iterations_[LEVELS];
   /** \brief distance threshold in correspondences filtering */
   float distThres_;
-  /** \brief angle threshold in correspondences filtering. Represents max sine of angle
-   * between normals. */
+  /** \brief angle threshold in correspondences filtering. Represents max sine
+   * of angle between normals. */
   float angleThres_;
 
   /** \brief Depth pyramid. */
   std::vector<DepthMap> depths_curr_;
-  /** \brief Vertex maps pyramid for current frame in global coordinate space. */
+  /** \brief Vertex maps pyramid for current frame in global coordinate space.
+   */
   std::vector<MapArr> vmaps_g_curr_;
-  /** \brief Normal maps pyramid for current frame in global coordinate space. */
+  /** \brief Normal maps pyramid for current frame in global coordinate space.
+   */
   std::vector<MapArr> nmaps_g_curr_;
 
-  /** \brief Vertex maps pyramid for previous frame in global coordinate space. */
+  /** \brief Vertex maps pyramid for previous frame in global coordinate space.
+   */
   std::vector<MapArr> vmaps_g_prev_;
-  /** \brief Normal maps pyramid for previous frame in global coordinate space. */
+  /** \brief Normal maps pyramid for previous frame in global coordinate space.
+   */
   std::vector<MapArr> nmaps_g_prev_;
 
-  /** \brief Vertex maps pyramid for current frame in current coordinate space. */
+  /** \brief Vertex maps pyramid for current frame in current coordinate space.
+   */
   std::vector<MapArr> vmaps_curr_;
-  /** \brief Normal maps pyramid for current frame in current coordinate space. */
+  /** \brief Normal maps pyramid for current frame in current coordinate space.
+   */
   std::vector<MapArr> nmaps_curr_;
 
-  /** \brief Array of buffers with ICP correspondences for each pyramid level. */
+  /** \brief Array of buffers with ICP correspondences for each pyramid level.
+   */
   std::vector<CorespMap> coresps_;
 
   /** \brief Buffer for storing scaled depth image */
@@ -321,11 +296,8 @@ private:
   /** \brief Array of camera translations for each moment of time. */
   std::vector<Vector3f> tvecs_;
 
-  /** \breif the transformation from ground truth trajactory to init cam pose*/
-  Eigen::Affine3f delta_pose_;
-
-  /** \brief Camera movement threshold. TSDF is integrated iff a camera movement metric
-   * exceeds some value. */
+  /** \brief Camera movement threshold. TSDF is integrated iff a camera movement
+   * metric exceeds some value. */
   float integration_metric_threshold_;
 
   /** \brief ICP step is completely disabled. Only integration now. */
@@ -335,17 +307,15 @@ private:
    * \param[in] rows_arg
    * \param[in] cols_arg
    */
-  void
-  allocateBufffers(int rows_arg, int cols_arg);
+  void allocateBufffers(int rows_arg, int cols_arg);
 
-  /** \brief Performs the tracker reset to initial  state. It's used if case of camera
-   * tracking fail.
+  /** \brief Performs the tracker reset to initial  state. It's used if case of
+   * camera tracking fail.
    */
-  void
-  reset();
+  void reset(int num = 0);
 
 public:
   PCL_MAKE_ALIGNED_OPERATOR_NEW
 };
-} // namespace gpu
-}; // namespace pcl
+}
+};

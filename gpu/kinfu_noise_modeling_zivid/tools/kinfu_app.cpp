@@ -64,6 +64,7 @@
 #include "pcl/gpu/kinfu/kinfu.h"
 #include "tsdf_volume.h"
 #include "tsdf_volume.hpp"
+#include "volume_related.h"
 
 #include <functional>
 #include <iostream>
@@ -737,7 +738,6 @@ struct KinFuApp {
            float z0 = 0.f,
            float fl = 525.f,
            int noise_components = 0,
-          float trunc_scale = 100.f,
            CameraPoseProcessor::Ptr pose_processor = CameraPoseProcessor::Ptr())
   : exit_(false)
   , scan_(false)
@@ -758,23 +758,23 @@ struct KinFuApp {
   , pose_processor_(pose_processor)
   {
     // Init Kinfu Tracker
-    Eigen::Vector3f volume_size = Vector3f::Constant(vsz /*meters*/);
+    // Eigen::Vector3f volume_size = Vector3f::Constant(vsz /*meters*/);
+    Eigen::Vector3f volume_size = Eigen::Vector3f(DEFAULT_VOLUME_SIZE_X, DEFAULT_VOLUME_SIZE_Y, DEFAULT_VOLUME_SIZE_Z);
     kinfu_.volume().setSize(volume_size);
 
     Eigen::Matrix3f R =
         Eigen::Matrix3f::Identity(); // * AngleAxisf( pcl::deg2rad(-30.f),
                                      // Vector3f::UnitX());
-    // Eigen::Vector3f t = volume_size * 0.5f - Vector3f (0, 0, volume_size (2) / 2
-    // * 1.2f);
+    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, volume_size(2) / 2);
     // set the volume centre at distance z0 away from Kinect
-    Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, z0);
+    // Eigen::Vector3f t = volume_size * 0.5f - Vector3f(0, 0, z0);
 
     Eigen::Affine3f pose = Eigen::Translation3f(t) * Eigen::AngleAxisf(R);
 
     kinfu_.setNoiseComponents(noise_components);
     kinfu_.setInitalCameraPose(pose);
-    // kinfu_.volume().setTsdfTruncDist(0.0030f /*meters*/);
-    kinfu_.volume().setTsdfTruncDist(vsz / trunc_scale);
+    // kinfu_.volume().setTsdfTruncDist(0.030f /*meters*/);
+    kinfu_.volume().setTsdfTruncDist(500 / 1000 / 10000);
     kinfu_.setIcpCorespFilteringParams(0.1f /*meters*/, sin(pcl::deg2rad(20.f)));
     // kinfu_.setDepthTruncationForICP(5.f/*meters*/);
     kinfu_.setCameraMovementThreshold(0.001f);
@@ -1196,7 +1196,7 @@ struct KinFuApp {
         if (viz_)
           scene_cloud_view_.cloud_viewer_->spinOnce(3);
 
-        if (skip_count > 10)
+        if (skip_count > 100)
           break;
       }
 
@@ -1526,7 +1526,7 @@ main(int argc, char* argv[])
     }
     else if (pc::parse_argument(argc, argv, "-pcd", pcd_dir) > 0) {
 
-      float fps_pcd = 10.0f;
+      float fps_pcd = 1.0f;
       pc::parse_argument(argc, argv, "-pcd_fps", fps_pcd);
 
       std::vector<std::string> pcd_files = getPcdFilesInDir(pcd_dir);
@@ -1577,9 +1577,6 @@ main(int argc, char* argv[])
   int noise_components = 0;
   pc::parse_argument(argc, argv, "-nc", noise_components);
 
-  float trunc_scale = 100.f;
-  pc::parse_argument(argc,argv, "-ts", trunc_scale);
-
   base_dir = pcl_fs::path(pcd_dir).parent_path().string();
 
   CameraPoseProcessor::Ptr pose_processor;
@@ -1590,7 +1587,7 @@ main(int argc, char* argv[])
   else if (gt_pose_file.empty()) {
     camera_pose_file =
         base_dir + "/kinfu_camera_poses_nc_" + std::to_string(noise_components) +
-        "_vsz_" + std::to_string(volume_size) + "_z0_" + std::to_string(z0) + "_ts_" + std::to_string(trunc_scale) + ".txt";
+        "_vsz_" + std::to_string(volume_size) + "_z0_" + std::to_string(z0) + ".txt";
     pose_processor.reset(new CameraPoseWriter(camera_pose_file));
   }
   std::cout << "saving pose to " << camera_pose_file << std::endl;
@@ -1601,7 +1598,6 @@ main(int argc, char* argv[])
                z0,
                fl,
                noise_components,
-               trunc_scale,
                pose_processor);
 
   if (pc::parse_argument(argc, argv, "-eval", eval_folder) > 0)
@@ -1673,10 +1669,10 @@ main(int argc, char* argv[])
 
   std::string dst_mesh_path =
       kinfu_dir + "/mesh_nc" + std::to_string(noise_components) + "_vsz_" +
-      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + "_ts_" + std::to_string(trunc_scale) + ".ply";
+      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + ".ply";
   std::string dst_pcd_path =
       kinfu_dir + "/cloud_nc" + std::to_string(noise_components) + "_vsz_" +
-      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + "_ts_" + std::to_string(trunc_scale) + ".pcd";
+      std::to_string(volume_size) + "_z0_" + std::to_string(z0) + ".pcd";
   pcl_fs::copy_file(
       "mesh.ply", dst_mesh_path, pcl_fs::copy_options::overwrite_existing);
   pcl_fs::copy_file(

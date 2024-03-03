@@ -50,10 +50,9 @@
 #include <Eigen/Core>
 
 #include <vector>
+#include "camera_type.h"
 
-#define KINECT_CAMERA
-
-#ifdef KINECT_CAMERA
+#if current_camera_type == KINECT_CAMERA
 // Focal lengths of RGB camera
 #define KINFU_DEFAULT_RGB_FOCAL_X 525.f
 #define KINFU_DEFAULT_RGB_FOCAL_Y 525.f
@@ -83,6 +82,7 @@
 #define KINFU_DEFAULT_CAMERA_CY 573.3330078125
 
 #endif
+
 
 namespace pcl {
 namespace gpu {

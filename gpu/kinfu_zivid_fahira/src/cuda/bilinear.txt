@@ -1,0 +1,311 @@
+#ifndef BILINEAR_CU
+#define BILINEAR_CU
+
+#include "device.hpp"
+#include <pcl/gpu/kinfu_zivid/volume_related.h>
+
+#include "noise_data.h"
+
+// performs bilateral interpolations on text data
+
+// wikipedia bilinear interpolate
+__device__ double b_interpolate2(const noise_data &p1, const noise_data &p2,
+                                 const noise_data &p3, const noise_data &p4, double x,
+                                 double y, float factor_)
+{
+
+    // printf("factor=%f\n", factor_);
+    /*ex point for 380,15
+    p1 (370,10), p2(395,10), p3(370,20),p4(395,20)*/
+    double x1 = p1.dist / 1000.f,
+           q11 = factor_ * p1.noise / 1000.f;
+    double x2 = p2.dist / 1000.f, q21 = factor_ * p2.noise / 1000.f;
+    double y1 = p1.angle * Pi / 180.f, q12 = factor_ * p3.noise / 1000.f;
+    double y2 = p3.angle * Pi / 180.f, q22 = factor_ * p4.noise / 1000.f;
+
+    double x20 = x2 - x;
+    double x21 = x2 - x1;
+    double x01 = x - x1;
+
+    double f_x_y1 = (x20 / x21) * q11 + (x01 / x21) * q21;
+    double f_x_y2 = (x20 / x21) * q12 + (x01 / x21) * q22;
+
+    double y20 = y2 - y;
+    double y21 = y2 - y1;
+    double y01 = y - y1;
+
+    double f_x_y = (y20 / y21) * f_x_y1 + (y01 / y21) * f_x_y2;
+    // printf("bilinear sigmaz =%f,p1 angle=%f, p3 angle=%f,p1 dist=%f, p2 dist=%f, Dp_scaled=%f, theta=%f\n", f_x_y, p1.angle, p3.angle, p1.dist, p2.dist, x, y * 180.f / PI);
+
+    return f_x_y;
+}
+// linear interpolate just angles given distance already exists in the data
+__device__ double l_interpolate_angle2(const noise_data &p1, const noise_data &p2, double x,
+                                       double y, float factor_)
+{
+    double y1 = p1.angle * Pi / 180.f, q11 = factor_ * p1.noise / 1000;
+    double y2 = p2.angle * Pi / 180.f, q21 = factor_ * p2.noise / 1000;
+
+    double y20 = y2 - y;
+    double y21 = y2 - y1;
+    double y01 = y - y1;
+
+    double f_x_y = (y20 / y21) * q11 + (y01 / y21) * q21;
+    printf("sigmaz %f,p1%f, p2=%f, Dp_scaled=%f, theta=%f\n", f_x_y, p1.angle, p2.angle, x, y * 180.f / Pi);
+
+    return f_x_y;
+}
+// linear interpolate just distance given angle already exists in the data
+__device__ double l_interpolate_dist2(const noise_data &p1, const noise_data &p2, double x,
+                                      double y, float factor_)
+{
+    // double factor_ = 10.f;
+    double x1 = p1.dist / 1000.f, q11 = factor_ * p1.noise / 1000.f;
+    double x2 = p2.dist / 1000.f, q21 = factor_ * p2.noise / 1000.f;
+
+    double x20 = x2 - x;
+    double x21 = x2 - x1;
+    double x01 = x - x1;
+
+    double f_x_y = (x20 / x21) * q11 + (x01 / x21) * q21;
+
+    // printf("sigmaz_l_inter %f,p1_ang=%f, p2_ang=%f,p1.dist=%f,p2.dist=%f Dp_scaled=%f, theta=%f\n", f_x_y, p1.angle, p2.angle, p1.dist, p2.dist, x, y * 180.f / PI);
+
+    return f_x_y;
+}
+//------------------------------points for angle interpolation
+__device__ noise_data get_p1_for_angle_interpolate2(float Dp_scaled, const float theta, const noise_data *d_data, int data_size)
+{
+    noise_data p1 = {0, 0, 0};
+
+    for (size_t index = 0; index < data_size; ++index)
+    {
+        const noise_data &element = d_data[index];
+        if ((element.dist / 1000.f == Dp_scaled) && (element.angle < theta * 180.f / PI) &&
+            ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+        {
+            p1 = element;
+            printf("p1 %f=%f\n", p1.angle);
+            break;
+        }
+    }
+    return p1;
+}
+__device__ noise_data get_p2_for_angle_interpolate2(float Dp_scaled, const float theta, const noise_data *d_data, int data_size)
+{
+    noise_data p2 = {0, 0, 0};
+    for (size_t index = 0; index < data_size; ++index)
+    {
+        const noise_data &element = d_data[index];
+        if ((element.dist / 1000.f == Dp_scaled) && (element.angle > theta * 180.f / PI) &&
+            ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+        {
+            p2 = element;
+            printf("p2 %f=%f\n", p2.angle);
+            // sigmaz = l_interpolate_angle(p1, p2, Dp_scaled, theta);
+            // cond_satisfied = 1;
+            break;
+        }
+    }
+    return p2;
+}
+//=======================//points for dist interpolation
+__device__ void get_neighbours_for_dist_interpolation2()
+{
+}
+
+//------------------------------
+__device__ float
+compute_sigma2(float Dp_scaled, const float theta, float sig_z_default_value, float sigmaz,
+               const noise_data *d_data, int data_size, float factor_)
+{
+    bool check_next_condition = 0;
+    bool check_next_condition1 = 0;
+    bool check_next_condition2 = 0;
+
+    // when we have exact data points, we do not neeed interpolation
+    for (size_t index = 0; index < data_size; ++index)
+    {
+        const noise_data &element = d_data[index];
+        if ((element.dist / 1000.f == Dp_scaled) && (element.angle == theta * 180.f / PI)) // apparently this will never happen
+        {
+            sigmaz = factor_ * element.noise;
+            printf("Element %d: dist = %f, angle = %f, noise = %f\n", index, element.dist, element.angle, element.noise);
+            break;
+        }
+    }
+
+    // if (sigmaz == -100.f)
+    if (sigmaz == sig_z_default_value)
+    {
+        check_next_condition = 1;
+    }
+    if (sigmaz != sig_z_default_value)
+    {
+        return sigmaz;
+    }
+
+    //------------------------------------------angle interpolate------------
+    if (check_next_condition)
+    {
+
+        noise_data p1, p2;
+        bool cond_satisfied = 0;
+        //  index = blockIdx.x * blockDim.x + threadIdx.x;
+        //  if (index < data_size)
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+            if ((element.dist / 1000.f == Dp_scaled) && (element.angle < theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p1 = element;
+                printf("p1 %f=%f\n", p1.angle);
+                break;
+            }
+        }
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+            if ((element.dist / 1000.f == Dp_scaled) && (element.angle > theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p2 = element;
+                printf("p2 %f=%f\n", p2.angle);
+                // sigmaz = l_interpolate_angle(p1, p2, Dp_scaled, theta);
+                cond_satisfied = 1;
+                break;
+            }
+        }
+        if (cond_satisfied)
+        {
+            sigmaz = l_interpolate_angle2(p1, p2, Dp_scaled, theta, factor_);
+        }
+
+        // if (sigmaz != -100.f)
+        if (sigmaz != sig_z_default_value)
+        {
+            printf("angle_interpolatep1.angle=%f,p2.angle=%f,p1.dist=%f,p2.dist=%f,Dp_scaled=%f,theta=%f,sigmaz=%f\n", p1.angle, p2.angle, p1.dist, p2.dist, Dp_scaled, theta, sigmaz);
+            return sigmaz;
+        }
+        // if (sigmaz == -100.f)
+        if (sigmaz == sig_z_default_value)
+        {
+            check_next_condition1 = 1;
+        }
+    }
+    //==================================dist interpolate====================
+    if ((check_next_condition1) | (theta == 0.0f))
+    {
+
+        noise_data p1, p2;
+        bool cond_satisfied1 = 0;
+        // index = blockIdx.x * blockDim.x + threadIdx.x;
+        //  if (index < data_size)
+        // printf("distance interepolation\n");
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+            if ((element.angle == theta * 180.f / PI) && (element.dist / 1000.f < Dp_scaled) &&
+                (element.dist / 1000.f >= Dp_scaled - 0.025))
+            {
+                p1 = element;
+                break;
+            }
+        }
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+            if ((element.angle == theta * 180.f / PI) && (element.dist / 1000.f >= Dp_scaled) &&
+                (element.dist / 1000.f <= Dp_scaled + 0.025))
+            {
+                p2 = element;
+                cond_satisfied1 = 1;
+                /* p5 = p1; // doing just for printing
+                 p6 = p2;
+                 p7 = p1;
+                 p8 = p2;
+                */
+                break;
+            }
+        }
+        if (cond_satisfied1)
+        {
+            sigmaz = l_interpolate_dist2(p1, p2, Dp_scaled, theta, factor_);
+        }
+
+        // if (sigmaz == -100.f)
+        if (sigmaz == sig_z_default_value)
+        {
+            check_next_condition2 = 1;
+        }
+        if (sigmaz != sig_z_default_value)
+        {
+            return sigmaz;
+        }
+    }
+    //------------------bilinear------------------------------------=====================================
+    if (check_next_condition2)
+    {
+
+        noise_data p1, p2, p3, p4;
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+
+            if ((element.dist / 1000.f < Dp_scaled) && (element.dist / 1000.f >= Dp_scaled - 0.025) &&
+                (element.angle < theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p1 = element;
+                break;
+            }
+        }
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+
+            if ((element.dist / 1000.f >= Dp_scaled) && (element.dist / 1000.f <= Dp_scaled + 0.025) &&
+                (element.angle < theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p2 = element;
+                break;
+            }
+        }
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+
+            if ((element.dist / 1000.f < Dp_scaled) && (element.dist / 1000.f >= Dp_scaled - 0.025) &&
+                (element.angle > theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p3 = element;
+                break;
+            }
+        }
+        for (size_t index = 0; index < data_size; ++index)
+        {
+            const noise_data &element = d_data[index];
+
+            if ((element.dist / 1000.f >= Dp_scaled) && (element.dist / 1000.f <= Dp_scaled + 0.025) &&
+                (element.angle > theta * 180.f / PI) &&
+                ((std::abs(element.angle - theta * 180.f / PI)) <= 10))
+            {
+                p4 = element;
+                break;
+            }
+        }
+        /* p5 = p1;
+         p6 = p2;
+         p7 = p3;
+         p8 = p4;
+         */
+
+        sigmaz = b_interpolate2(p1, p2, p3, p4, Dp_scaled, theta, factor_);
+        return sigmaz;
+    }
+}
+
+#endif /* BILINEAR_CU */
