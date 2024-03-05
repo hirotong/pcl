@@ -327,7 +327,7 @@ pcl::PCDGrabberBase::PCDGrabberImpl::openTARFile(const std::string& file_name)
 void
 pcl::PCDGrabberBase::PCDGrabberImpl::trigger()
 {
-  std::lock_guard<std::mutex> read_ahead_lock(read_ahead_mutex_);
+  // std::lock_guard<std::mutex> read_ahead_lock(read_ahead_mutex_);
   if (valid_) {
     if (poses_.empty())
       grabber_.publish(next_cloud_, origin_, orientation_, next_file_name_);
@@ -450,7 +450,8 @@ pcl::PCDGrabberBase::start()
   }
   else // manual trigger
   {
-    std::thread non_blocking_call(&PCDGrabberBase::PCDGrabberImpl::trigger, impl_);
+    // std::thread non_blocking_call(&PCDGrabberBase::PCDGrabberImpl::trigger, impl_);
+    impl_->trigger();
   }
 }
 
@@ -470,9 +471,9 @@ pcl::PCDGrabberBase::trigger()
 {
   if (impl_->frames_per_second_ > 0)
     return;
-  std::thread non_blocking_call(&PCDGrabberBase::PCDGrabberImpl::trigger, impl_);
+  // std::thread non_blocking_call(&PCDGrabberBase::PCDGrabberImpl::trigger, impl_);
 
-  //  impl_->trigger ();
+   impl_->trigger ();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////

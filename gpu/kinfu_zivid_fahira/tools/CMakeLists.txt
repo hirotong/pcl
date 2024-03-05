@@ -13,7 +13,7 @@ if(NOT build)
   return()
 endif()
 
-include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include" "/usr/include/x86_64-linux-gnu/c++/11")
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 file(GLOB hdrs "*.h*")
 include_directories(SYSTEM ${OPENNI_INCLUDE_DIRS})
@@ -33,13 +33,13 @@ if(OpenCV_FOUND)
 endif()
 
 ## mesh the cloud
-# set(the_target pcl_kinfu_app_zivid_meshit)
-# set(srcs mesh_it.cpp )
+set(the_target pcl_kinfu_app_zivid_meshit)
+set(srcs mesh_it.cpp )
 
-# source_group("Source Files" FILES ${srcs})
+source_group("Source Files" FILES ${srcs})
 
-# PCL_ADD_EXECUTABLE(${the_target} COMPONENT ${SUBSUBSYS_NAME} SOURCES ${srcs} ${hdrs} BUNDLE)
-# target_link_libraries(${the_target} pcl_common pcl_io pcl_surface  Boost::program_options pcl_features ${PCL_LIBRARIES})
+PCL_ADD_EXECUTABLE(${the_target} COMPONENT ${SUBSUBSYS_NAME} SOURCES ${srcs} ${hdrs} BUNDLE)
+target_link_libraries(${the_target} pcl_common pcl_io pcl_surface  Boost::program_options pcl_features ${PCL_LIBRARIES})
 
 
 ##bilinear interpolate_check

@@ -48,6 +48,7 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <Eigen/Core>
+#include <Eigen/src/Geometry/Transform.h>
 #include <vector>
 #include <pcl/gpu/kinfu_zivid/zivid_related.h>
 #include <fstream>
@@ -158,7 +159,7 @@ public:
    * \param hint
    * \return true if can render 3D view.
    */
-  bool operator()(const DepthMap &depth, Eigen::Affine3f *hint = nullptr);
+  bool operator()(const DepthMap &depth, const Eigen::Affine3f *hint = nullptr);
 
   /** \brief Processes next frame (both depth and color integration). Please
    * call initColorIntegration before invpoking this.
@@ -166,7 +167,7 @@ public:
    * \param[in] colors next RGB frame
    * \return true if can render 3D view.
    */
-  bool operator()(const DepthMap &depth, const View &colors);
+  bool operator()(const DepthMap &depth, const View &colors, const Eigen::Affine3f *hint = nullptr);
 
   /** \brief Returns camera pose at given time, default the last pose
    * \param[in] time Index of frame for which camera pose is returned.
@@ -295,6 +296,8 @@ private:
 
   /** \brief Array of camera translations for each moment of time. */
   std::vector<Vector3f> tvecs_;
+
+  Eigen::Affine3f delta_pose_;
 
   /** \brief Camera movement threshold. TSDF is integrated iff a camera movement
    * metric exceeds some value. */

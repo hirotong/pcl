@@ -40,66 +40,85 @@
 
 #include <pcl/common/utils.h> // pcl::utils::ignore
 
-#include <limits>
-
 #include <cuda.h>
+
+#include <limits>
 
 namespace pcl {
 namespace device {
-template <class T> __device__ __host__ __forceinline__ void swap(T &a, T &b) {
+template <class T>
+__device__ __host__ __forceinline__ void
+swap(T& a, T& b)
+{
   T c(a);
   a = b;
   b = c;
 }
 
-__device__ __forceinline__ float dot(const float3 &v1, const float3 &v2) {
+__device__ __forceinline__ float
+dot(const float3& v1, const float3& v2)
+{
   return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
 }
 
-__device__ __forceinline__ float3 &operator+=(float3 &vec, const float &v) {
+__device__ __forceinline__ float3&
+operator+=(float3& vec, const float& v)
+{
   vec.x += v;
   vec.y += v;
   vec.z += v;
   return vec;
 }
 
-__device__ __forceinline__ float3 operator+(const float3 &v1,
-                                            const float3 &v2) {
+__device__ __forceinline__ float3
+operator+(const float3& v1, const float3& v2)
+{
   return make_float3(v1.x + v2.x, v1.y + v2.y, v1.z + v2.z);
 }
 
-__device__ __forceinline__ float3 &operator*=(float3 &vec, const float &v) {
+__device__ __forceinline__ float3&
+operator*=(float3& vec, const float& v)
+{
   vec.x *= v;
   vec.y *= v;
   vec.z *= v;
   return vec;
 }
 
-__device__ __forceinline__ float3 operator-(const float3 &v1,
-                                            const float3 &v2) {
+__device__ __forceinline__ float3
+operator-(const float3& v1, const float3& v2)
+{
   return make_float3(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z);
 }
 
-__device__ __forceinline__ float3 operator*(const float3 &v1, const float &v) {
+__device__ __forceinline__ float3
+operator*(const float3& v1, const float& v)
+{
   return make_float3(v1.x * v, v1.y * v, v1.z * v);
 }
 
-__device__ __forceinline__ float norm(const float3 &v) {
+__device__ __forceinline__ float
+norm(const float3& v)
+{
   return sqrt(dot(v, v));
 }
 
-__device__ __forceinline__ float3 normalized(const float3 &v) {
+__device__ __forceinline__ float3
+normalized(const float3& v)
+{
   return v * rsqrt(dot(v, v));
 }
 
-__device__ __host__ __forceinline__ float3 cross(const float3 &v1,
-                                                 const float3 &v2) {
-  return make_float3(v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z,
-                     v1.x * v2.y - v1.y * v2.x);
+__device__ __host__ __forceinline__ float3
+cross(const float3& v1, const float3& v2)
+{
+  return make_float3(
+      v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z, v1.x * v2.y - v1.y * v2.x);
 }
 
-__device__ __forceinline__ void computeRoots2(const float &b, const float &c,
-                                              float3 &roots) {
+__device__ __forceinline__ void
+computeRoots2(const float& b, const float& c, float3& roots)
+{
   roots.x = 0.f;
   float d = b * b - 4.f * c;
   if (d < 0.f) // no real roots!!!! THIS SHOULD NOT HAPPEN!
@@ -111,14 +130,16 @@ __device__ __forceinline__ void computeRoots2(const float &b, const float &c,
   roots.y = 0.5f * (b - sd);
 }
 
-__device__ __forceinline__ void computeRoots3(float c0, float c1, float c2,
-                                              float3 &roots) {
+__device__ __forceinline__ void
+computeRoots3(float c0, float c1, float c2, float3& roots)
+{
   if (std::abs(c0) < std::numeric_limits<float>::epsilon()) // one root is 0 ->
                                                             // quadratic
                                                             // equation
   {
     computeRoots2(c2, c1, roots);
-  } else {
+  }
+  else {
     const float s_inv3 = 1.f / 3.f;
     const float s_sqrt3 = sqrtf(3.f);
     // Construct the parameters used in classifying the roots of the equation
@@ -161,27 +182,34 @@ __device__ __forceinline__ void computeRoots3(float c0, float c1, float c2,
 
 struct Eigen33 {
 public:
-  template <int Rows> struct MiniMat {
+  template <int Rows>
+  struct MiniMat {
     float3 data[Rows];
-    __device__ __host__ __forceinline__ float3 &operator[](int i) {
+    __device__ __host__ __forceinline__ float3&
+    operator[](int i)
+    {
       return data[i];
     }
-    __device__ __host__ __forceinline__ const float3 &operator[](int i) const {
+    __device__ __host__ __forceinline__ const float3&
+    operator[](int i) const
+    {
       return data[i];
     }
   };
   using Mat33 = MiniMat<3>;
   using Mat43 = MiniMat<4>;
 
-  static __forceinline__ __device__ float3 unitOrthogonal(const float3 &src) {
+  static __forceinline__ __device__ float3
+  unitOrthogonal(const float3& src)
+  {
     float3 perp;
     /* Let us compute the crossed product of *this with a vector
-    * that is not too close to being colinear to *this.
-    */
+     * that is not too close to being colinear to *this.
+     */
 
     /* unless the x and y coords are both close to zero, we can
-    * simply take ( -y, x, 0 ) and normalize it.
-    */
+     * simply take ( -y, x, 0 ) and normalize it.
+     */
     if (!isMuchSmallerThan(src.x, src.z) || !isMuchSmallerThan(src.y, src.z)) {
       float invnm = rsqrtf(src.x * src.x + src.y * src.y);
       perp.x = -src.y * invnm;
@@ -189,9 +217,9 @@ public:
       perp.z = 0.0f;
     }
     /* if both x and y are close to zero, then the vector is close
-    * to the z-axis, so it's far from colinear to the x-axis for instance.
-    * So we take the crossed product with (1,0,0) and normalize it.
-    */
+     * to the z-axis, so it's far from colinear to the x-axis for instance.
+     * So we take the crossed product with (1,0,0) and normalize it.
+     */
     else {
       float invnm = rsqrtf(src.z * src.z + src.y * src.y);
       perp.x = 0.0f;
@@ -202,10 +230,13 @@ public:
     return perp;
   }
 
-  __device__ __forceinline__ Eigen33(volatile float *mat_pkg_arg)
-      : mat_pkg(mat_pkg_arg) {}
-  __device__ __forceinline__ void compute(Mat33 &tmp, Mat33 &vec_tmp,
-                                          Mat33 &evecs, float3 &evals) {
+  __device__ __forceinline__
+  Eigen33(volatile float* mat_pkg_arg)
+  : mat_pkg(mat_pkg_arg)
+  {}
+  __device__ __forceinline__ void
+  compute(Mat33& tmp, Mat33& vec_tmp, Mat33& evecs, float3& evals)
+  {
     // Scale the matrix so its entries are in [-1,1].  The scaling is applied
     // only when at least one matrix entry has magnitude larger than 1.
 
@@ -229,8 +260,7 @@ public:
     // eigenvalues are the roots to this equation, all guaranteed to be
     // real-valued, because the matrix is symmetric.
     float c0 = m00() * m11() * m22() + 2.f * m01() * m02() * m12() -
-               m00() * m12() * m12() - m11() * m02() * m02() -
-               m22() * m01() * m01();
+               m00() * m12() * m12() - m11() * m02() * m02() - m22() * m01() * m01();
     float c1 = m00() * m11() - m01() * m01() + m00() * m22() - m02() * m02() +
                m11() * m22() - m12() * m12();
     float c2 = m00() + m11() + m22();
@@ -241,7 +271,8 @@ public:
       evecs[0] = make_float3(1.f, 0.f, 0.f);
       evecs[1] = make_float3(0.f, 1.f, 0.f);
       evecs[2] = make_float3(0.f, 0.f, 1.f);
-    } else if (evals.y - evals.x <= std::numeric_limits<float>::epsilon()) {
+    }
+    else if (evals.y - evals.x <= std::numeric_limits<float>::epsilon()) {
       // first and second equal
       tmp[0] = row0();
       tmp[1] = row1();
@@ -260,15 +291,18 @@ public:
 
       if (len1 >= len2 && len1 >= len3) {
         evecs[2] = vec_tmp[0] * rsqrtf(len1);
-      } else if (len2 >= len1 && len2 >= len3) {
+      }
+      else if (len2 >= len1 && len2 >= len3) {
         evecs[2] = vec_tmp[1] * rsqrtf(len2);
-      } else {
+      }
+      else {
         evecs[2] = vec_tmp[2] * rsqrtf(len3);
       }
 
       evecs[1] = unitOrthogonal(evecs[2]);
       evecs[0] = cross(evecs[1], evecs[2]);
-    } else if (evals.z - evals.y <= std::numeric_limits<float>::epsilon()) {
+    }
+    else if (evals.z - evals.y <= std::numeric_limits<float>::epsilon()) {
       // second and third equal
       tmp[0] = row0();
       tmp[1] = row1();
@@ -287,15 +321,18 @@ public:
 
       if (len1 >= len2 && len1 >= len3) {
         evecs[0] = vec_tmp[0] * rsqrtf(len1);
-      } else if (len2 >= len1 && len2 >= len3) {
+      }
+      else if (len2 >= len1 && len2 >= len3) {
         evecs[0] = vec_tmp[1] * rsqrtf(len2);
-      } else {
+      }
+      else {
         evecs[0] = vec_tmp[2] * rsqrtf(len3);
       }
 
       evecs[1] = unitOrthogonal(evecs[0]);
       evecs[2] = cross(evecs[0], evecs[1]);
-    } else {
+    }
+    else {
 
       tmp[0] = row0();
       tmp[1] = row1();
@@ -319,10 +356,12 @@ public:
       if (len1 >= len2 && len1 >= len3) {
         mmax[2] = len1;
         evecs[2] = vec_tmp[0] * rsqrtf(len1);
-      } else if (len2 >= len1 && len2 >= len3) {
+      }
+      else if (len2 >= len1 && len2 >= len3) {
         mmax[2] = len2;
         evecs[2] = vec_tmp[1] * rsqrtf(len2);
-      } else {
+      }
+      else {
         mmax[2] = len3;
         evecs[2] = vec_tmp[2] * rsqrtf(len3);
       }
@@ -347,12 +386,14 @@ public:
         evecs[1] = vec_tmp[0] * rsqrtf(len1);
         min_el = len1 <= mmax[min_el] ? 1 : min_el;
         max_el = len1 > mmax[max_el] ? 1 : max_el;
-      } else if (len2 >= len1 && len2 >= len3) {
+      }
+      else if (len2 >= len1 && len2 >= len3) {
         mmax[1] = len2;
         evecs[1] = vec_tmp[1] * rsqrtf(len2);
         min_el = len2 <= mmax[min_el] ? 1 : min_el;
         max_el = len2 > mmax[max_el] ? 1 : max_el;
-      } else {
+      }
+      else {
         mmax[1] = len3;
         evecs[1] = vec_tmp[2] * rsqrtf(len3);
         min_el = len3 <= mmax[min_el] ? 1 : min_el;
@@ -379,12 +420,14 @@ public:
         evecs[0] = vec_tmp[0] * rsqrtf(len1);
         min_el = len3 <= mmax[min_el] ? 0 : min_el;
         max_el = len3 > mmax[max_el] ? 0 : max_el;
-      } else if (len2 >= len1 && len2 >= len3) {
+      }
+      else if (len2 >= len1 && len2 >= len3) {
         mmax[0] = len2;
         evecs[0] = vec_tmp[1] * rsqrtf(len2);
         min_el = len3 <= mmax[min_el] ? 0 : min_el;
         max_el = len3 > mmax[max_el] ? 0 : max_el;
-      } else {
+      }
+      else {
         mmax[0] = len3;
         evecs[0] = vec_tmp[2] * rsqrtf(len3);
         min_el = len3 <= mmax[min_el] ? 0 : min_el;
@@ -402,48 +445,98 @@ public:
   }
 
 private:
-  volatile float *mat_pkg;
+  volatile float* mat_pkg;
 
-  __device__ __forceinline__ float m00() const { return mat_pkg[0]; }
-  __device__ __forceinline__ float m01() const { return mat_pkg[1]; }
-  __device__ __forceinline__ float m02() const { return mat_pkg[2]; }
-  __device__ __forceinline__ float m10() const { return mat_pkg[1]; }
-  __device__ __forceinline__ float m11() const { return mat_pkg[3]; }
-  __device__ __forceinline__ float m12() const { return mat_pkg[4]; }
-  __device__ __forceinline__ float m20() const { return mat_pkg[2]; }
-  __device__ __forceinline__ float m21() const { return mat_pkg[4]; }
-  __device__ __forceinline__ float m22() const { return mat_pkg[5]; }
+  __device__ __forceinline__ float
+  m00() const
+  {
+    return mat_pkg[0];
+  }
+  __device__ __forceinline__ float
+  m01() const
+  {
+    return mat_pkg[1];
+  }
+  __device__ __forceinline__ float
+  m02() const
+  {
+    return mat_pkg[2];
+  }
+  __device__ __forceinline__ float
+  m10() const
+  {
+    return mat_pkg[1];
+  }
+  __device__ __forceinline__ float
+  m11() const
+  {
+    return mat_pkg[3];
+  }
+  __device__ __forceinline__ float
+  m12() const
+  {
+    return mat_pkg[4];
+  }
+  __device__ __forceinline__ float
+  m20() const
+  {
+    return mat_pkg[2];
+  }
+  __device__ __forceinline__ float
+  m21() const
+  {
+    return mat_pkg[4];
+  }
+  __device__ __forceinline__ float
+  m22() const
+  {
+    return mat_pkg[5];
+  }
 
-  __device__ __forceinline__ float3 row0() const {
+  __device__ __forceinline__ float3
+  row0() const
+  {
     return make_float3(m00(), m01(), m02());
   }
-  __device__ __forceinline__ float3 row1() const {
+  __device__ __forceinline__ float3
+  row1() const
+  {
     return make_float3(m10(), m11(), m12());
   }
-  __device__ __forceinline__ float3 row2() const {
+  __device__ __forceinline__ float3
+  row2() const
+  {
     return make_float3(m20(), m21(), m22());
   }
 
-  __device__ __forceinline__ static bool isMuchSmallerThan(float x, float y) {
+  __device__ __forceinline__ static bool
+  isMuchSmallerThan(float x, float y)
+  {
     // copied from <eigen>/include/Eigen/src/Core/NumTraits.h
-    const float prec_sqr = std::numeric_limits<float>::epsilon() *
-                           std::numeric_limits<float>::epsilon();
+    const float prec_sqr =
+        std::numeric_limits<float>::epsilon() * std::numeric_limits<float>::epsilon();
     return x * x <= prec_sqr * y * y;
   }
 };
 
 struct Block {
-  static __device__ __forceinline__ unsigned int stride() {
+  static __device__ __forceinline__ unsigned int
+  stride()
+  {
     return blockDim.x * blockDim.y * blockDim.z;
   }
 
-  static __device__ __forceinline__ int flattenedThreadId() {
+  static __device__ __forceinline__ int
+  flattenedThreadId()
+  {
     return threadIdx.z * blockDim.x * blockDim.y + threadIdx.y * blockDim.x +
            threadIdx.x;
   }
 
   template <int CTA_SIZE, typename T, class BinOp>
-  static __device__ __forceinline__ void reduce(volatile T *buffer, BinOp op) {
+  static __device__ __forceinline__ void
+  reduce(volatile T* buffer, BinOp op)
+  {
     int tid = flattenedThreadId();
     T val = buffer[tid];
 
@@ -502,8 +595,9 @@ struct Block {
   }
 
   template <int CTA_SIZE, typename T, class BinOp>
-  static __device__ __forceinline__ T reduce(volatile T *buffer, T init,
-                                             BinOp op) {
+  static __device__ __forceinline__ T
+  reduce(volatile T* buffer, T init, BinOp op)
+  {
     int tid = flattenedThreadId();
     T val = buffer[tid] = init;
     __syncthreads();
@@ -560,39 +654,44 @@ struct Block {
 };
 
 struct Warp {
-  enum {
-    LOG_WARP_SIZE = 5,
-    WARP_SIZE = 1 << LOG_WARP_SIZE,
-    STRIDE = WARP_SIZE
-  };
+  enum { LOG_WARP_SIZE = 5, WARP_SIZE = 1 << LOG_WARP_SIZE, STRIDE = WARP_SIZE };
 
   /** \brief Returns the warp lane ID of the calling thread. */
-  static __device__ __forceinline__ unsigned int laneId() {
+  static __device__ __forceinline__ unsigned int
+  laneId()
+  {
     unsigned int ret;
     asm("mov.u32 %0, %laneid;" : "=r"(ret));
     return ret;
   }
 
-  static __device__ __forceinline__ unsigned int id() {
-    int tid = threadIdx.z * blockDim.x * blockDim.y + threadIdx.y * blockDim.x +
-              threadIdx.x;
+  static __device__ __forceinline__ unsigned int
+  id()
+  {
+    int tid =
+        threadIdx.z * blockDim.x * blockDim.y + threadIdx.y * blockDim.x + threadIdx.x;
     return tid >> LOG_WARP_SIZE;
   }
 
-  static __device__ __forceinline__ int laneMaskLt() {
+  static __device__ __forceinline__ int
+  laneMaskLt()
+  {
     unsigned int ret;
     asm("mov.u32 %0, %lanemask_lt;" : "=r"(ret));
     return ret;
   }
 
-  static __device__ __forceinline__ int binaryExclScan(int ballot_mask) {
+  static __device__ __forceinline__ int
+  binaryExclScan(int ballot_mask)
+  {
     return __popc(Warp::laneMaskLt() & ballot_mask);
   }
 };
 
 struct Emulation {
-  static __device__ __forceinline__ int warp_reduce(volatile int *ptr,
-                                                    const unsigned int tid) {
+  static __device__ __forceinline__ int
+  warp_reduce(volatile int* ptr, const unsigned int tid)
+  {
     const unsigned int lane = tid & 31; // index of thread in warp (0..31)
 
     if (lane < 16) {
@@ -607,8 +706,9 @@ struct Emulation {
     return ptr[tid - lane];
   }
 
-  static __forceinline__ __device__ int Ballot(int predicate,
-                                               volatile int *cta_buffer) {
+  static __forceinline__ __device__ int
+  Ballot(int predicate, volatile int* cta_buffer)
+  {
     pcl::utils::ignore(cta_buffer);
 #if CUDA_VERSION >= 9000
     return __ballot_sync(__activemask(), predicate);
@@ -617,8 +717,9 @@ struct Emulation {
 #endif
   }
 
-  static __forceinline__ __device__ bool All(int predicate,
-                                             volatile int *cta_buffer) {
+  static __forceinline__ __device__ bool
+  All(int predicate, volatile int* cta_buffer)
+  {
     pcl::utils::ignore(cta_buffer);
 #if CUDA_VERSION >= 9000
     return __all_sync(__activemask(), predicate);
@@ -627,7 +728,7 @@ struct Emulation {
 #endif
   }
 };
-}
-}
+} // namespace device
+} // namespace pcl
 
 #endif /* PCL_GPU_KINFU_CUDA_UTILS_HPP_ */

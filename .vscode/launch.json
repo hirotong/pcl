@@ -5,6 +5,14 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "CUDA C++: Launch",
+      "type": "cuda-gdb",
+      "request": "launch",
+      "program": "${command:cmake.launchTargetPath}",
+      "args": "-r -pcd /home/ton068/datasets/Noise_model/shiva_step1_nofilter_conv/pcd -gt_pose /home/ton068/datasets/Noise_model/shiva_step1_nofilter_conv/noise0_300_gt_1.txt -nc 2 -volume_size 1",
+    },
+
+    {
       "name": "(gdb) Launch",
       "type": "cppdbg",
       "request": "launch",
@@ -12,11 +20,13 @@
       "args": [
         "-r",
         "-pcd",
-        "/home/ton068/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/pcd",
+        "/home/ton068/datasets/Noise_model/shiva_step1_nofilter_conv/pcd",
         "-gt_pose",
-        "/home/ton068/datasets/kinect_data/rgbd_dataset_freiburg2_xyz/associate_gt.txt",
+        "/home/ton068/datasets/Noise_model/shiva_step1_nofilter_conv/kinfu_camera_poses_nc_2_vsz_3.000000_z0_0.750000_ts_100.000000",
         "-nc",
-        "1"
+        "0",
+        "-volume_size",
+        "0.3"
       ],
       "stopAtEntry": true,
       "cwd": "${fileDirname}",

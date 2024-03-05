@@ -1,8 +1,9 @@
 #ifndef NOISE_DATA_H
 #define NOISE_DATA_H
+#include <cmath>
 #include <iostream>
 #include <vector>
-#include <cmath>
+
 
 struct noise_data {
   double dist;
@@ -246,5 +247,11 @@ std::vector<noise_data> data = {
     {370, 70, 0.12648445034132924}
 
 };
+
+std::vector<float> distances = {370, 395, 420, 445, 470, 495, 520,  545,  570, 595,
+                                620, 645, 670, 695, 720, 745, 770,  795,  820, 845,
+                                870, 895, 920, 945, 970, 995, 1020, 1045, 1070};
+
+std::vector<float> angles = {0, 10, 20, 30, 40, 50, 60, 70};
 
 #endif /* NOISE_DATA_H */

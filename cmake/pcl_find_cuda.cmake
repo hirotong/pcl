@@ -10,6 +10,7 @@ find_package(CUDA 9.0)
 if(CUDA_FOUND)
   message(STATUS "Found CUDA Toolkit v${CUDA_VERSION_STRING}")
 
+  set(CMAKE_CUDA_COMPILER "/usr/local/cuda/bin/nvcc")
   enable_language(CUDA)
   set(HAVE_CUDA TRUE)
 
@@ -61,4 +62,10 @@ if(CUDA_FOUND)
     target_include_directories(pcl_cuda INTERFACE ${CUDA_TOOLKIT_INCLUDE})
 
   endif ()
+
+
+  message(STATUS "CMAKE_CUDA_FLAGS_DEBUG:" ${CMAKE_CUDA_FLAGS_DEBUG})
+   set(CMAKE_CUDA_FLAGS_DEBUG "-G -g")
+  # message(STATUS ${CMAKE_CUDA_FLAGS_DEBUG})
+  message(STATUS "CMAKE_CUDA_FLAGS_DEBUG:" ${CMAKE_CUDA_FLAGS_DEBUG})
 endif()

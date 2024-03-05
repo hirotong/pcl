@@ -38,7 +38,7 @@ PCL_MAKE_PKGCONFIG(${LIB_NAME} COMPONENT ${SUBSYS_NAME} DESC ${SUBSYS_DESC} PCL_
 # Install include files
 PCL_ADD_INCLUDES("${SUBSYS_NAME}" "${SUBSYS_PATH}" ${incs})
 
-# find_package( Boost REQUIRED COMPONENTS program_options system )
+find_package( Boost REQUIRED COMPONENTS program_options system )
 
 if(BUILD_tools)
   add_subdirectory(tools)

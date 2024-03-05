@@ -46,21 +46,32 @@ namespace pcl {
 namespace device {
 #define INV_DIV 3.051850947599719e-5f
 
-__device__ __forceinline__ void pack_tsdf(float tsdf, int weight,
-                                          short2 &value) {
+// ------------------New-------------------------------
+__device__ __forceinline__ void
+pack_tsdf(float tsdf, float weight, short2& value)
+{
   int fixedp = max(-DIVISOR, min(DIVISOR, __float2int_rz(tsdf * DIVISOR)));
-  // int fixedp = __float2int_rz(tsdf * DIVISOR);
-  value = make_short2(fixedp, weight);
+  int fixedw =
+      max(-DIVISOR, min(DIVISOR, __float2int_rz(weight * DIVISOR2 - DIVISOR)));
+  value = make_short2(fixedp, fixedw);
+}
+__device__ __forceinline__ void
+unpack_tsdf(short2 value, float& tsdf, float& weight)
+{
+  tsdf = static_cast<float>(value.x) / DIVISOR; //*/ * INV_DIV;
+  weight = static_cast<float>(value.y + DIVISOR) / DIVISOR2;
 }
 
-__device__ __forceinline__ void unpack_tsdf(short2 value, float &tsdf,
-                                            float &weight) {
+
+// __device__ __forceinline__ void unpack_tsdf(short2 value, float &tsdf,
+                                            // float &weight) {
   // weight = value.y;//original
-  tsdf = __int2float_rn(value.x) / DIVISOR; //*/ * INV_DIV;
+  // tsdf = __int2float_rn(value.x) / DIVISOR; //*/ * INV_DIV;
                                             // weight = value.y;
-  weight = (__int2float_rn(value.y) + DIVISOR) / DIVISOR2;
+  // weight = (__int2float_rn(value.y) + DIVISOR) / DIVISOR2;
   // weight ranges from 0 to 256
-}
+// }
+
 //------------------------------------adding just to compare with kinect
 // simulateneously in tsdf23 kernel
 __device__ __forceinline__ void pack_tsdf_k(float tsdf, int weight,

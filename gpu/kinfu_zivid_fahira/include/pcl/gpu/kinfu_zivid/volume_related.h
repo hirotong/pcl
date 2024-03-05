@@ -47,8 +47,8 @@
 #endif
 
 // Define common settings ==========================
-#define volume_size_tmp_meters volume_size_tmp / 1000.f
-#define neg_volume_size_tmp_meters -volume_size_tmp / 1000.f
+#define volume_size_tmp_meters (volume_size_tmp / 1000.f)
+#define neg_volume_size_tmp_meters (-volume_size_tmp / 1000.f)
 
 #define DEFAULT_GRID_RES_X voxel_tmp
 #define DEFAULT_GRID_RES_Y voxel_tmp
@@ -60,17 +60,17 @@ constexpr int volume_xyz = voxel_tmp;
 //==========================================covers cases for
 // volume_size_tmp_meters<900 which are not 300,450 or 500
 #define POSE_FILE_NAME ""
-#define shrunk_volume_x volume_size_tmp_meters / 2
-#define shrunk_volume_y volume_size_tmp_meters / 2
-#define shrunk_volume_z volume_size_tmp_meters / 2
+#define shrunk_volume_x (volume_size_tmp_meters / 2)
+#define shrunk_volume_y (volume_size_tmp_meters / 2)
+#define shrunk_volume_z (volume_size_tmp_meters / 2)
 
 #if shrink_volume_ == 1
 #if getting_correct_pose == 0
 #if dataset == ganesh
 #if volume_size_tmp == 300
-#define shrunk_volume_x 0.12
-#define shrunk_volume_y 0.12
-#define shrunk_volume_z -0.47 // min is 0.38 below this we do not see full frame
+#define shrunk_volume_x 0.3 // 0.12
+#define shrunk_volume_y 0.3  // 0.12
+#define shrunk_volume_z -0.3 // -0.47 // min is 0.38 below this we do not see full frame
 //-0.39 works well but drift from back
 //-0.45 covers and tracks better compared to -0.39
 #define POSE_FILE_NAME "ganesh_vol300.txt"
@@ -79,9 +79,9 @@ constexpr int volume_xyz = voxel_tmp;
 //===========================
 #if dataset == shiva
 #if volume_size_tmp == 300
-#define shrunk_volume_x 0.25
-#define shrunk_volume_y 0.23
-#define shrunk_volume_z -0.7
+#define shrunk_volume_x 0.3
+#define shrunk_volume_y 0.3
+#define shrunk_volume_z -0.4
 //#define POSE_FILE_NAME "noise0_300vol.txt"//obtained with inital volume of 450
 //#define POSE_FILE_NAME "noise0_300_gt.txt" // obtained with initial volume of
 // 900 in noise 0 setting
