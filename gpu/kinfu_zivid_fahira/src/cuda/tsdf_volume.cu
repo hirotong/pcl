@@ -621,7 +621,7 @@ tsdf2(PtrStep<short2> volume,
     if (v.z > 0 && coo.x >= 0 && coo.y >= 0 && coo.x < depth_raw.cols &&
         coo.y < depth_raw.rows) // 6
     {
-      int Dp = depth_raw.ptr(coo.y)[coo.x]; // mm
+      float Dp = static_cast<float>(depth_raw.ptr(coo.y)[coo.x]) / 10; // mm
 
       if (Dp != 0) {
         float xl = (coo.x - intr.cx) / intr.fx;
@@ -707,7 +707,7 @@ scaleDepth(const PtrStepSz<ushort> depth, PtrStep<float> scaled, const Intr intr
   float yl = (y - intr.cy) / intr.fy;
   float lambda = sqrtf(xl * xl + yl * yl + 1);
 
-  scaled.ptr(y)[x] = Dp * lambda / 1000.f; // meters
+  scaled.ptr(y)[x] = Dp * lambda / 10000.f; // meters
 }
 
 __global__ void
@@ -1128,7 +1128,7 @@ __global__ void
 
         if (Dp_scaled != 0 && sdf >= -6.f * sigmaz) // meters
         {
-          float tsdf = sqrtf(1.0f - __expf(-2.f / PI * sdf * sdf / (100 * sigmaz * sigmaz)));
+          float tsdf = sqrtf(1.0f - __expf(-2.f / PI * sdf * sdf / (sigmaz * sigmaz)));
           if (sdf < 0)
             tsdf = -tsdf;
           // read and unpack

@@ -6,9 +6,10 @@
 
 #define shiva 3
 #define ganesh 4
+#define dino 5
 
 #define current_camera_type ZIVID_CAMERA
-#define dataset shiva // shiva // ganesh
+#define dataset dino // dino // shiva // ganesh
 
 // set shrink volume to 1 if using volume less than 900mm for zivid
 // set getting_correct_pose to 1 if want to get better pose for smaller volume

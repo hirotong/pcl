@@ -41,6 +41,7 @@
 #include <pcl/common/time.h>
 #include <pcl/gpu/kinfu_zivid/kinfu_z.h>
 #include <pcl/gpu/kinfu_zivid/volume_related.h>
+
 #include <boost/asio/detail/atomic_count.hpp>
 
 #include <Eigen/Cholesky>
@@ -714,12 +715,12 @@ pcl::gpu::KinfuTracker::allocateBufffers(int rows, int cols)
 // }
 
 bool
-pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affine3f* hint)
+pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw,
+                                   const Eigen::Affine3f* hint)
 {
   device::Intr intr(fx_, fy_, cx_, cy_);
 
   if (hint != nullptr) {
-
 
     // still do thesee to keep the same as the original kinfu
     {
@@ -728,7 +729,7 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
       device::bilateralFilter(depth_raw, depths_curr_[0]);
 
       if (max_icp_distance_ > 0)
-        device::truncateDepth(depths_curr_[0], max_icp_distance_);
+        device::truncateDepth(depths_curr_[0], max_icp_distance_ * 10);
 
       for (int i = 1; i < LEVELS; ++i)
         device::pyrDown(depths_curr_[i - 1], depths_curr_[i]);
@@ -757,7 +758,6 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
       tcurr = init_pose.translation();
       rmats_[0] = Rcurr;
       tvecs_[0] = tcurr;
-
     }
     else {
       // pose_prev.translate(Tprev);
@@ -786,15 +786,15 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
 
     if (integrate) {
       integrateTsdfVolume(depth_raw,
-                                  nmaps_curr_[0],
-                                  intr,
-                                  device_volume_size,
-                                  device_Rcurr_inv,
-                                  device_tcurr,
-                                  tsdf_volume_->getTsdfTruncDist(),
-                                  tsdf_volume_->data(),
-                                  depthRawScaled_,
-                                  noise_components_);
+                          nmaps_curr_[0],
+                          intr,
+                          device_volume_size,
+                          device_Rcurr_inv,
+                          device_tcurr,
+                          tsdf_volume_->getTsdfTruncDist(),
+                          tsdf_volume_->data(),
+                          depthRawScaled_,
+                          noise_components_);
     }
 
     ///////////////////////////////////////////////////////////////////////////////////
@@ -828,7 +828,7 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
       device::bilateralFilter(depth_raw, depths_curr_[0]);
 
       if (max_icp_distance_ > 0)
-        device::truncateDepth(depths_curr_[0], max_icp_distance_);
+        device::truncateDepth(depths_curr_[0], max_icp_distance_ * 10);
 
       for (int i = 1; i < LEVELS; ++i)
         device::pyrDown(depths_curr_[i - 1], depths_curr_[i]);
@@ -865,15 +865,15 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
       //                             tsdf_volume_->data(),
       //                             depthRawScaled_);
       device::integrateTsdfVolume(depth_raw,
-                                          nmaps_curr_[0],
-                                          intr,
-                                          device_volume_size,
-                                          device_Rcam_inv,
-                                          device_tcam,
-                                          tsdf_volume_->getTsdfTruncDist(),
-                                          tsdf_volume_->data(),
-                                          depthRawScaled_,
-                                          noise_components_);
+                                  nmaps_curr_[0],
+                                  intr,
+                                  device_volume_size,
+                                  device_Rcam_inv,
+                                  device_tcam,
+                                  tsdf_volume_->getTsdfTruncDist(),
+                                  tsdf_volume_->data(),
+                                  depthRawScaled_,
+                                  noise_components_);
 
       for (int i = 0; i < LEVELS; ++i)
         device::tranformMaps(vmaps_curr_[i],
@@ -1031,15 +1031,15 @@ pcl::gpu::KinfuTracker::operator()(const DepthMap& depth_raw, const Eigen::Affin
     //                     tsdf_volume_->data(),
     //                     depthRawScaled_);
     integrateTsdfVolume(depth_raw,
-                                nmaps_curr_[0],
-                                intr,
-                                device_volume_size,
-                                device_Rcurr_inv,
-                                device_tcurr,
-                                tsdf_volume_->getTsdfTruncDist(),
-                                tsdf_volume_->data(),
-                                depthRawScaled_,
-                                noise_components_);
+                        nmaps_curr_[0],
+                        intr,
+                        device_volume_size,
+                        device_Rcurr_inv,
+                        device_tcurr,
+                        tsdf_volume_->getTsdfTruncDist(),
+                        tsdf_volume_->data(),
+                        depthRawScaled_,
+                        noise_components_);
   }
 
   ///////////////////////////////////////////////////////////////////////////////////////////
@@ -1169,7 +1169,9 @@ pcl::gpu::KinfuTracker::initColorIntegration(int max_weight)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 bool
-pcl::gpu::KinfuTracker::operator()(const DepthMap& depth, const View& colors, const Eigen::Affine3f* hint)
+pcl::gpu::KinfuTracker::operator()(const DepthMap& depth,
+                                   const View& colors,
+                                   const Eigen::Affine3f* hint)
 {
   bool res = (*this)(depth, hint);
 

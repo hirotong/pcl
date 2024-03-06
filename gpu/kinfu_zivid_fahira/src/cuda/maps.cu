@@ -52,7 +52,7 @@ namespace pcl
 
       if (u < depth.cols && v < depth.rows)
       {
-        float z = depth.ptr (v)[u] / 1000.f; // load and convert: mm -> meters
+        float z = depth.ptr (v)[u] / 10000.f; // load and convert: mm -> meters
 
         if (z != 0)
         {

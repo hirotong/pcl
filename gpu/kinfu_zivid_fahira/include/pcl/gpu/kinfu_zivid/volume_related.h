@@ -69,8 +69,8 @@ constexpr int volume_xyz = voxel_tmp;
 #if dataset == ganesh
 #if volume_size_tmp == 300
 #define shrunk_volume_x 0.3 // 0.12
-#define shrunk_volume_y 0.3  // 0.12
-#define shrunk_volume_z -0.3 // -0.47 // min is 0.38 below this we do not see full frame
+#define shrunk_volume_y 0.4  // 0.12
+#define shrunk_volume_z -0.35 // -0.47 // min is 0.38 below this we do not see full frame
 //-0.39 works well but drift from back
 //-0.45 covers and tracks better compared to -0.39
 #define POSE_FILE_NAME "ganesh_vol300.txt"
@@ -104,6 +104,16 @@ constexpr int volume_xyz = voxel_tmp;
 #define shrunk_volume_z -0.6
 #define POSE_FILE_NAME "noise0_500vol.txt"
 //#endif
+#endif
+#endif
+#if dataset == dino
+#if volume_size_tmp == 300
+#define shrunk_volume_x 0.15 // 0.12
+#define shrunk_volume_y 0.22  // 0.12
+#define shrunk_volume_z -0.4 // -0.47 // min is 0.38 below this we do not see full frame
+//-0.39 works well but drift from back
+//-0.45 covers and tracks better compared to -0.39
+#define POSE_FILE_NAME "ganesh_vol300.txt"
 #endif
 #endif
 //#endif
